@@ -1,99 +1,142 @@
 "use client";
+import { useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
-  faCloudUploadAlt, faFilePdf, faImage, faTrash, 
-  faLock, faShieldAlt, faCheckCircle ,faFileUpload
+  faFileUpload, faFilePdf, faFlask, faBook, faListAlt, 
+  faTrash, faPlus, faCheckCircle, faSpinner 
 } from "@fortawesome/free-solid-svg-icons";
 
-export default function SubjectMaterials() {
+type Category = "lectures" | "sheets" | "labs";
+
+interface Material {
+  id: number;
+  name: string;
+  category: Category;
+  date: string;
+  size: string;
+}
+
+export default function TeacherMaterials() {
   const { id } = useParams();
-  const [role, setRole] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<Category>("lectures");
   const [isUploading, setIsUploading] = useState(false);
 
-  useEffect(() => {
-    setRole(localStorage.getItem("userRole") || "assistant");
-  }, []);
+  const [materials, setMaterials] = useState<Material[]>([
+    { id: 1, name: "Lecture 01 - Introduction.pdf", category: "lectures", date: "Feb 01", size: "1.5 MB" },
+    { id: 2, name: "Sheet 01 - Problem Set.pdf", category: "sheets", date: "Feb 05", size: "800 KB" },
+    { id: 3, name: "Lab 01 - Safety & Equipment.pdf", category: "labs", date: "Feb 03", size: "2.1 MB" },
+  ]);
 
-  const handleUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      alert("File published to student portal.");
-    }, 2000);
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      // Simulate upload delay
+      setTimeout(() => {
+        const newFile: Material = {
+          id: Date.now(),
+          name: file.name,
+          category: activeTab,
+          date: "Just now",
+          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        };
+        setMaterials([newFile, ...materials]);
+        setIsUploading(false);
+      }, 1500);
+    }
   };
 
+  const deleteFile = (fileId: number) => {
+    setMaterials(materials.filter(m => m.id !== fileId));
+  };
+
+  const filteredMaterials = materials.filter(m => m.category === activeTab);
+
   return (
-    <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in duration-500">
-      <header className="flex justify-between items-end">
+    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Course Materials: {id}</h1>
-          <p className="text-gray-500 font-medium">Manage PDFs, images, and official examinations.</p>
+          <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Materials: {id}</h1>
+          <p className="text-gray-500 font-medium">Manage course content and student resources.</p>
         </div>
-        <div className="hidden md:block text-right">
-          <span className="text-[10px] font-black text-blue-900 bg-blue-50 px-3 py-1 rounded-full uppercase">
-            Access Level: {role}
-          </span>
-        </div>
+        <button 
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="bg-blue-900 text-white px-8 py-4 rounded-2xl font-black shadow-lg hover:bg-blue-800 transition flex items-center gap-3 disabled:opacity-50"
+        >
+          {isUploading ? <FontAwesomeIcon icon={faSpinner} spin /> : <FontAwesomeIcon icon={faPlus} />}
+          Upload to {activeTab}
+        </button>
+        <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden" accept=".pdf,.doc,.docx" />
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: Standard Material Upload (Accessible to Both) */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white p-8 rounded-3xl border-2 border-dashed border-gray-200 hover:border-blue-900 transition-all group relative">
-            <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleUpload} />
-            <div className="text-center">
-              <FontAwesomeIcon icon={faCloudUploadAlt} size="2xl" className="text-blue-900 mb-4 group-hover:scale-110 transition-transform" />
-              <h3 className="text-lg font-bold text-gray-900">Upload General Material</h3>
-              <p className="text-sm text-gray-400 mt-1">Drag and drop lecture notes or lab manuals</p>
-            </div>
-          </div>
+      {/* Category Tabs */}
+      <div className="flex bg-white p-2 rounded-2xl shadow-sm border border-gray-100 w-fit gap-2">
+        <TabButton active={activeTab === "lectures"} label="Lectures" icon={faBook} onClick={() => setActiveTab("lectures")} />
+        <TabButton active={activeTab === "sheets"} label="Sheets / Assignments" icon={faListAlt} onClick={() => setActiveTab("sheets")} />
+        <TabButton active={activeTab === "labs"} label="Labs / Sections" icon={faFlask} onClick={() => setActiveTab("labs")} />
+      </div>
 
-          <div className="space-y-3">
-            <h3 className="font-bold text-gray-800 ml-2">Active Files</h3>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="p-4 flex items-center justify-between hover:bg-gray-50 transition">
-                <div className="flex items-center gap-4">
-                  <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-xl" />
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">Chapter_01_Basics.pdf</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase">Added by Dr. Ibrahim</p>
-                  </div>
-                </div>
-                <button className="text-gray-300 hover:text-red-500 transition px-2"><FontAwesomeIcon icon={faTrash} /></button>
-              </div>
+      {/* File List */}
+      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
+        {filteredMaterials.length > 0 ? (
+          <table className="w-full text-left">
+            <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">
+              <tr>
+                <th className="p-6">Document Name</th>
+                <th className="p-6">Upload Date</th>
+                <th className="p-6">Size</th>
+                <th className="p-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredMaterials.map((file) => (
+                <tr key={file.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <td className="p-6">
+                    <div className="flex items-center gap-3">
+                      <FontAwesomeIcon icon={faFilePdf} className="text-red-500 text-lg" />
+                      <span className="font-bold text-gray-800">{file.name}</span>
+                    </div>
+                  </td>
+                  <td className="p-6 text-sm text-gray-500 font-medium">{file.date}</td>
+                  <td className="p-6 text-xs text-gray-400 font-black uppercase">{file.size}</td>
+                  <td className="p-6 text-right">
+                    <button 
+                      onClick={() => deleteFile(file.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors p-2"
+                    >
+                      <FontAwesomeIcon icon={faTrash} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="p-20 text-center space-y-4">
+            <div className="w-20 h-20 bg-gray-50 text-gray-200 rounded-full flex items-center justify-center mx-auto text-3xl">
+              <FontAwesomeIcon icon={faFileUpload} />
             </div>
+            <p className="text-gray-400 font-medium italic">No files uploaded in this category yet.</p>
           </div>
-        </div>
-
-        {/* Right: High-Stakes Exams (Teacher ONLY) */}
-        <div className="space-y-6">
-          <div className={`p-6 rounded-3xl border transition-all ${role === 'teacher' ? 'bg-blue-900 text-white shadow-xl' : 'bg-gray-100 border-gray-200 opacity-60'}`}>
-            <div className="flex items-center gap-3 mb-6">
-              <FontAwesomeIcon icon={role === 'teacher' ? faShieldAlt : faLock} className={role === 'teacher' ? 'text-blue-300' : 'text-gray-400'} />
-              <h3 className="font-bold uppercase tracking-widest text-xs">Official Examinations</h3>
-            </div>
-
-            {role === 'teacher' ? (
-              <div className="space-y-4">
-                <p className="text-sm text-blue-100 mb-4">Upload the midterm or final exam files directly to the secure server.</p>
-                <button onClick={handleUpload} className="w-full py-4 bg-white/10 border border-white/20 rounded-2xl font-bold hover:bg-white/20 transition flex items-center justify-center gap-3">
-                  <FontAwesomeIcon icon={faFileUpload} /> Upload Midterm
-                </button>
-                <button onClick={handleUpload} className="w-full py-4 bg-white/10 border border-white/20 rounded-2xl font-bold hover:bg-white/20 transition flex items-center justify-center gap-3">
-                  <FontAwesomeIcon icon={faFileUpload} /> Upload Final
-                </button>
-              </div>
-            ) : (
-              <div className="py-10 text-center">
-                <p className="text-gray-500 text-sm font-bold uppercase">Restricted Access</p>
-                <p className="text-gray-400 text-xs mt-2 italic px-4">Only Professors can manage exam files.</p>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function TabButton({ active, label, icon, onClick }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
+        active ? "bg-blue-900 text-white shadow-md" : "text-gray-400 hover:bg-gray-50"
+      }`}
+    >
+      <FontAwesomeIcon icon={icon} />
+      {label}
+    </button>
   );
 }

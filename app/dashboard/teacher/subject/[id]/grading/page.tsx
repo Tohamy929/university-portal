@@ -2,90 +2,110 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEdit, faSave, faTimes, faCalculator, faExclamationTriangle } from "@fortawesome/free-solid-svg-icons";
+import { faEdit, faSave, faUsers, faCheckCircle, faExclamationTriangle, faUndo } from "@fortawesome/free-solid-svg-icons";
 
 export default function TeacherGrading() {
   const { id } = useParams();
   const [isEditing, setIsEditing] = useState(false);
-  const [currentCategory, setCurrentCategory] = useState<"quizzes" | "midterm" | "final" | "attendance">("quizzes");
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [category, setCategory] = useState<"attendance" | "quizzes" | "assignments" | "midterm">("assignments");
 
-  // Direct array - No complex state fetching for now to ensure it renders
-  const students = [
-    { id: "20210101", name: "Ahmed Ali", missed: 2, quizzes: 15, midterm: 14, final: 30 },
-    { id: "20210502", name: "Sheriff Mahmoud", missed: 4, quizzes: 10, midterm: 8, final: 0 },
-    { id: "20210903", name: "Youssef Sedik", missed: 0, quizzes: 19, midterm: 18, final: 35 },
-  ];
+  // Mock data - grades start as null (Not Reviewed)
+  const [students, setStudents] = useState([
+    { id: "20210101", name: "Ahmed Ali", missed: 2, quizzes: 15, assignments: null, midterm: 14 },
+    { id: "20210502", name: "Mona Zaki", missed: 4, quizzes: 10, assignments: null, midterm: 8 },
+  ]);
+
+  const maxGrades = { attendance: 10, quizzes: 20, assignments: 20, midterm: 20 };
+
+  if (!selectedGroup) {
+    return (
+      <div className="max-w-md mx-auto mt-20 p-10 bg-white rounded-[3rem] border border-gray-100 shadow-xl text-center space-y-6 animate-in zoom-in-95">
+        <div className="w-20 h-20 bg-blue-50 text-blue-900 rounded-3xl flex items-center justify-center mx-auto text-3xl">
+          <FontAwesomeIcon icon={faUsers} />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-gray-900">Select Group</h2>
+          <p className="text-gray-400 font-medium">Please choose a group to begin grading.</p>
+        </div>
+        <select 
+          className="w-full p-4 bg-gray-50 border rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-900"
+          onChange={(e) => setSelectedGroup(e.target.value)}
+        >
+          <option value="">Choose Group...</option>
+          <option value="G1">Group 1 (Lecture)</option>
+          <option value="G2">Group 2 (Section)</option>
+        </select>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {/* Category Tabs */}
-      <div className="flex bg-white p-2 rounded-2xl shadow-sm border border-gray-100 w-fit gap-2">
-        {["attendance", "quizzes", "midterm", "final"].map((cat) => (
-          <button
-            key={cat}
-            onClick={() => { setCurrentCategory(cat as any); setIsEditing(false); }}
-            className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
-              currentCategory === cat ? "bg-blue-900 text-white" : "text-gray-400 hover:bg-gray-50"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* Action Header */}
-      <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm">
-        <h2 className="text-xl font-bold text-gray-900 uppercase">Grading: {currentCategory}</h2>
-        <div className="flex gap-2">
-          {!isEditing ? (
-            <button onClick={() => setIsEditing(true)} className="bg-blue-900 text-white px-6 py-2 rounded-xl font-bold text-sm">
-              <FontAwesomeIcon icon={faEdit} className="mr-2"/> Edit
-            </button>
-          ) : (
-            <>
-              <button onClick={() => setIsEditing(false)} className="bg-gray-100 px-6 py-2 rounded-xl font-bold text-sm">Cancel</button>
-              <button onClick={() => setIsEditing(false)} className="bg-green-600 text-white px-6 py-2 rounded-xl font-bold text-sm">Save</button>
-            </>
-          )}
+    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in">
+      <header className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setSelectedGroup("")} className="text-gray-400 hover:text-blue-900"><FontAwesomeIcon icon={faUndo} /></button>
+          <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">{id} Grading: {selectedGroup}</h1>
         </div>
-      </div>
+        
+        <div className="flex gap-2 bg-white p-1.5 rounded-2xl border border-gray-100 shadow-sm">
+          {(["attendance", "quizzes", "assignments", "midterm"] as const).map(cat => (
+            <button
+              key={cat}
+              onClick={() => { setCategory(cat); setIsEditing(false); }}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${category === cat ? "bg-blue-900 text-white shadow-md" : "text-gray-400 hover:bg-gray-50"}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </header>
 
-      {/* The Table */}
-      <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
+        <div className="p-8 bg-gray-50 border-b flex justify-between items-center">
+          <h3 className="font-black text-gray-800 uppercase italic">Managing {category}</h3>
+          <button onClick={() => setIsEditing(!isEditing)} className={`px-8 py-3 rounded-2xl font-bold transition-all ${isEditing ? 'bg-green-600 text-white' : 'bg-blue-900 text-white'}`}>
+            <FontAwesomeIcon icon={isEditing ? faSave : faEdit} className="mr-2" />
+            {isEditing ? "Save Changes" : "Edit Marks"}
+          </button>
+        </div>
+
         <table className="w-full text-left">
-          <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase border-b">
-            <tr>
-              <th className="p-6">Student</th>
-              <th className="p-6">Grade / Value</th>
-              <th className="p-6 text-right">Status</th>
-            </tr>
+          <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b">
+            <tr><th className="p-8">Student</th><th className="p-8">Grade</th><th className="p-8 text-right">Status</th></tr>
           </thead>
-          <tbody>
-            {students.map((student) => {
-              const isProhibited = student.missed >= 4;
+          <tbody className="divide-y divide-gray-50">
+            {students.map(s => {
+              const isProhibited = s.missed >= 4;
+              const currentGrade = [category];
+              
               return (
-                <tr key={student.id} className={`border-b border-gray-50 ${isProhibited ? 'bg-red-50/50' : ''}`}>
-                  <td className="p-6">
-                    <p className="font-bold text-gray-800">{student.name}</p>
-                    <p className="text-[10px] text-gray-400 font-bold">{student.id}</p>
+                <tr key={s.id} className={`${isProhibited ? 'bg-red-50/30' : ''}`}>
+                  <td className="p-8">
+                    <p className="font-bold text-gray-900">{s.name}</p>
+                    <p className="text-[10px] font-black text-gray-400">{s.id}</p>
                   </td>
-                  <td className="p-6">
-                    {currentCategory === "attendance" ? (
-                      <span className="font-black text-blue-900">{isProhibited ? "0 / 10" : "10 / 10"}</span>
+                  <td className="p-8">
+                    {category === "attendance" ? (
+                      <span className="font-black text-lg text-blue-900">{isProhibited ? "0" : "10"} <small className="text-gray-300">/ 10</small></span>
                     ) : (
-                      <input 
-                        type="number" 
-                        disabled={!isEditing || (isProhibited && currentCategory === "final")}
-                        defaultValue={student[currentCategory]} 
-                        className="w-20 p-2 border rounded-lg font-bold disabled:bg-transparent disabled:border-transparent"
-                      />
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number" 
+                          disabled={!isEditing}
+                          placeholder="--"
+                          defaultValue={currentGrade ?? ""} 
+                          className="w-20 p-3 bg-gray-50 border rounded-xl font-black outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-transparent disabled:border-transparent placeholder:text-gray-300"
+                        />
+                        <span className="text-xs font-bold text-gray-300">/ {maxGrades[category]}</span>
+                      </div>
                     )}
                   </td>
-                  <td className="p-6 text-right">
-                    {isProhibited ? (
-                      <span className="text-red-600 font-black text-[10px] uppercase">Prohibited</span>
+                  <td className="p-8 text-right">
+                    {currentGrade === null ? (
+                      <span className="text-[10px] font-black uppercase text-orange-500 bg-orange-50 px-3 py-1 rounded-lg tracking-widest">Not Reviewed</span>
                     ) : (
-                      <span className="text-green-600 font-black text-[10px] uppercase">Active</span>
+                      <span className="text-[10px] font-black uppercase text-green-600"><FontAwesomeIcon icon={faCheckCircle} /> Graded</span>
                     )}
                   </td>
                 </tr>
