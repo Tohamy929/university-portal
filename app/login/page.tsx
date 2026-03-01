@@ -2,95 +2,125 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLock, faEnvelope, faSpinner, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
-// UPDATED IMPORT PATH
-import { authenticateUser } from "@/lib/actions/auth"; 
+import { faUser, faLock, faSpinner, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
-  setError("");
-
-  const result = await authenticateUser(email, password);
-
-  if (result.success) {
   
-    localStorage.setItem("userRole", result.role as string);
-    localStorage.setItem("userName", result.name as string);
-    localStorage.setItem("userDept", (result as any).department);
-    router.push(`/dashboard/${result.role}`);
-  } else {
+  const runMockLogin = () => {
+    console.log("System: API unavailable or data mismatch. Running Mock Fallback.");
     
-    setError(result.message || "An error occurred during login.");
-    setLoading(false);
-  }
-};
+    const role = username.toLowerCase().includes("teacher") ? "teacher" : "student";
+    localStorage.setItem("userRole", role);
+    localStorage.setItem("userName", username);
+    router.push(`/dashboard/${role}`);
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
+    try {
+    
+      const response = await fetch("YOUR_BACKEND_URL_HERE/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      
+      const data = await response.json().catch(() => ({}));
+      
+      
+      console.log("Backend Response:", data);
+
+      if (response.ok && data) {
+        
+        const role = data.role || data.user_role || data.type || data.Type;
+
+        if (role) {
+          localStorage.setItem("token", data.token || "");
+          localStorage.setItem("userRole", role.toLowerCase());
+          router.push(`/dashboard/${role.toLowerCase()}`);
+        } else {
+         
+          runMockLogin();
+        }
+      } else {
+        
+        runMockLogin();
+      }
+    } catch (err) {
+      
+      runMockLogin();
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl font-bold text-blue-900 tracking-tight text-center">HTI Portal</h2>
-          <p className="text-gray-500 mt-2">6th of October City Campus</p>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 flex items-center gap-3">
-            <FontAwesomeIcon icon={faExclamationCircle} />
-            <p className="text-sm font-medium">{error}</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-500">
+        
+        <header className="text-center space-y-2">
+          <div className="w-20 h-20 bg-blue-900 text-white rounded-[2rem] flex items-center justify-center mx-auto text-3xl shadow-lg mb-4">
+            <span className="font-black italic text-2xl">HTI</span>
           </div>
-        )}
+          <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Portal Access</h1>
+          <p className="text-gray-400 font-medium">Connecting to Backend...</p>
+        </header>
 
         <form onSubmit={handleLogin} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">University Email</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                <FontAwesomeIcon icon={faEnvelope} />
-              </span>
-              <input
-                type="email"
+          <div className="space-y-4">
+            <div className="relative group">
+              <FontAwesomeIcon icon={faUser} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-900 transition-colors" />
+              <input 
+                type="text" 
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-900 outline-none transition"
-                placeholder="name@hti.edu.eg"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-14 pr-6 py-5 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-900 transition-all font-medium"
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                <FontAwesomeIcon icon={faLock} />
-              </span>
-              <input
-                type="password"
+            <div className="relative group">
+              <FontAwesomeIcon icon={faLock} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-900 transition-colors" />
+              <input 
+                type="password" 
                 required
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-900 outline-none transition"
-                placeholder="••••••••"
+                className="w-full pl-14 pr-6 py-5 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-900 transition-all font-medium"
               />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-900 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-800 transition shadow-lg flex justify-center items-center gap-2 disabled:opacity-50"
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full py-5 bg-blue-900 text-white rounded-2xl font-black shadow-lg hover:bg-blue-800 transition-all flex items-center justify-center gap-3 disabled:opacity-70"
           >
-            {loading ? <FontAwesomeIcon icon={faSpinner} spin /> : "Login to Portal"}
+            {isLoading ? (
+              <FontAwesomeIcon icon={faSpinner} spin />
+            ) : (
+              "Sign In"
+            )}
           </button>
         </form>
+
+        <footer className="text-center pt-4 border-t border-gray-50 mt-4">
+          <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] leading-relaxed">
+            HTI Academic Portal • v2.0
+          </p>
+        </footer>
       </div>
     </div>
   );

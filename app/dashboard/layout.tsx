@@ -18,11 +18,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
   
-  const showNavbar = !!params.id; // Only show if inside a subject [id]
+ 
+  const isSubjectPage = pathname.includes("/subject/");
 
   useEffect(() => {
     setRole(localStorage.getItem("userRole") || "student");
-    setIsMenuOpen(false); // Auto-close menu on navigation
+    setIsMenuOpen(false); 
   }, [pathname]);
 
   const navLinks: any = {
@@ -52,40 +53,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const currentLinks = navLinks[role] || [];
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col overflow-x-hidden">
-      {/* 1. TOP NAVBAR */}
-      {showNavbar && (
-        <nav className="sticky top-0 z-[100] bg-blue-900 text-white px-6 h-20 flex items-center justify-between shadow-xl">
+    <div className="min-h-screen bg-gray-50 flex flex-col relative overflow-x-hidden">
+      
+     
+      {isSubjectPage && (
+        <nav className="sticky top-0 left-0 right-0 z-[200] bg-blue-900 text-white px-6 h-20 flex items-center justify-between shadow-2xl">
           <div className="flex items-center gap-4">
-            <Link href={`/dashboard/${role}`} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center hover:bg-white/20 transition text-sm">
+            <button 
+              onClick={() => router.back()} 
+              className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center hover:bg-white/20 transition active:scale-90"
+            >
               <FontAwesomeIcon icon={faArrowLeft} />
-            </Link>
-            <div>
-              <p className="text-[10px] font-black uppercase text-blue-300 tracking-[0.2em] leading-none mb-1">Subject View</p>
-              <h2 className="font-bold text-sm tracking-tight">{params.id}</h2>
+            </button>
+            <div className="max-w-[150px] sm:max-w-none">
+              <p className="text-[10px] font-black uppercase text-blue-300 tracking-widest leading-none mb-1">Subject</p>
+              <h2 className="font-bold text-sm truncate uppercase tracking-tight">{params.id || "Details"}</h2>
             </div>
           </div>
 
           <button 
             onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-3 bg-white/10 rounded-xl hover:bg-white/20 transition flex items-center gap-3 border border-white/5"
+            className="p-3 bg-white/10 rounded-xl hover:bg-white/20 transition flex items-center gap-3 border border-white/10 active:scale-95"
           >
-            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">
+            <span className="text-[10px] font-black uppercase tracking-widest hidden xs:inline">
               {isMenuOpen ? "Close" : "Menu"}
             </span>
-            <FontAwesomeIcon icon={isMenuOpen ? faTimes : faBars} className="w-4 h-4" />
+            <FontAwesomeIcon icon={isMenuOpen ? faTimes : faBars} className="w-5 h-5" />
           </button>
         </nav>
       )}
 
-      {/* 2. FULL-SCREEN MENU OVERLAY (Fixes transparency/zoom) */}
+     
       {isMenuOpen && (
-        <div className="fixed inset-0 z-[90] bg-blue-900 text-white animate-in fade-in zoom-in-95 duration-200 flex flex-col p-8 overflow-y-auto">
-          <div className="mt-24 space-y-4 max-w-lg mx-auto w-full">
-            <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] mb-4 text-center">Navigation Menu</p>
-            
+        <div className="fixed inset-0 z-[150] bg-blue-900 text-white flex flex-col p-8 overflow-y-auto pt-24 animate-in fade-in zoom-in-95 duration-200">
+          <div className="space-y-4 max-w-lg mx-auto w-full pb-20">
             {currentLinks.map((link: any) => {
-              // DROPDOWN RENDER
               if (link.subLinks) {
                 return (
                   <div key={link.name} className="space-y-2">
@@ -97,17 +99,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         <FontAwesomeIcon icon={link.icon} className="w-6 opacity-70" />
                         {link.name}
                       </div>
-                      <FontAwesomeIcon icon={faChevronDown} className={`text-sm transition-transform ${isAttendanceOpen ? 'rotate-180' : ''}`} />
+                      <FontAwesomeIcon icon={faChevronDown} className={`transition-transform ${isAttendanceOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isAttendanceOpen && (
-                      <div className="space-y-2 pl-4">
+                      <div className="space-y-2 pl-6">
                         {link.subLinks.map((sub: any) => (
-                          <Link 
-                            key={sub.name} 
-                            href={sub.href}
-                            className={`block p-5 rounded-3xl text-lg font-bold transition-all ${pathname === sub.href ? 'text-white' : 'text-blue-300 hover:text-white'}`}
-                          >
-                            • {sub.name}
+                          <Link key={sub.name} href={sub.href} className="block p-4 rounded-3xl text-lg font-bold text-blue-300 hover:text-white transition-colors">
+                             • {sub.name}
                           </Link>
                         ))}
                       </div>
@@ -116,13 +114,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 );
               }
 
-              // REGULAR LINK RENDER
               return (
                 <Link 
                   key={link.name} 
                   href={link.href}
                   className={`flex items-center gap-6 p-6 rounded-[2rem] text-xl font-black transition-all ${
-                    pathname === link.href ? 'bg-white text-blue-900 shadow-2xl scale-105' : 'hover:bg-white/10'
+                    pathname === link.href ? 'bg-white text-blue-900 shadow-xl' : 'hover:bg-white/10'
                   }`}
                 >
                   <FontAwesomeIcon icon={link.icon} className="w-6 opacity-70" />
@@ -132,19 +129,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             })}
           </div>
           
-          <div className="mt-12 border-t border-white/10 pt-8 max-w-lg mx-auto w-full">
-            <button 
-              onClick={() => { localStorage.clear(); router.push("/login"); }}
-              className="flex items-center justify-center gap-4 w-full p-6 text-red-400 font-bold hover:bg-red-500/10 rounded-3xl transition"
-            >
-              <FontAwesomeIcon icon={faSignOutAlt} /> Sign Out
-            </button>
-          </div>
+          <button 
+            onClick={() => { localStorage.clear(); router.push("/login"); }}
+            className="mt-auto flex items-center justify-center gap-4 w-full p-6 text-red-400 font-bold hover:bg-red-500/10 rounded-3xl transition border border-red-500/20"
+          >
+            <FontAwesomeIcon icon={faSignOutAlt} /> Log Out
+          </button>
         </div>
       )}
 
      
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-8 lg:p-10">
+      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-10">
         {children}
       </main>
     </div>
