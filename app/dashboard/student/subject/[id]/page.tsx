@@ -1,129 +1,127 @@
 "use client";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
-  faBullhorn, faClock, faExclamationTriangle, faInfoCircle, 
-  faArrowRight, faCalendarCheck, faUserGraduate 
+  faExclamationTriangle, faBan, faChevronRight, 
+  faClock, faBookOpen, faBullhorn, faImage, faFilePdf 
 } from "@fortawesome/free-solid-svg-icons";
-import { DEPARTMENT_DATA } from "@/lib/studentData";
 
-export default function StudentSubjectOverview() {
+export default function StudentSubjectHome() {
   const { id } = useParams();
-  const [subjectData, setSubjectData] = useState<any>(null);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const missedCount = 3; 
 
-  useEffect(() => {
-    const dept = localStorage.getItem("userDept") || "Electrical";
-    const currentDept = DEPARTMENT_DATA[dept];
-    
-  
-    const course = currentDept?.courses.find((c: any) => c.id === id);
-    setSubjectData(course);
-
-    
-    const subjectAssignments = currentDept?.assignments.filter(
-      (a: any) => a.courseId === id && a.status === "pending"
-    );
-    setAssignments(subjectAssignments || []);
-  }, [id]);
-
-  if (!subjectData) return <div className="p-10 text-center animate-pulse">Loading Subject Data...</div>;
+ 
+  const announcements = [
+    { 
+      id: 1, 
+      text: "Please find the attached syllabus for the Microwave Engineering lab. We will begin experiments next week.", 
+      date: "2 days ago",
+      file: { name: "Lab_Syllabus.pdf", type: "pdf", url: "#" }
+    },
+    { 
+      id: 2, 
+      text: "The lecture scheduled for tomorrow has been moved to Room 402.", 
+      date: "5 hours ago",
+      file: null
+    }
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="max-w-5xl mx-auto space-y-10 animate-in fade-in duration-700">
+      
      
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-blue-900 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-              {subjectData.id}
-            </span>
-            <span className="text-gray-400 text-xs font-bold italic">Spring Term 2026</span>
-          </div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight">{subjectData.name}</h1>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 bg-blue-50 text-blue-900 rounded-xl flex items-center justify-center">
-            <FontAwesomeIcon icon={faCalendarCheck} />
+      {missedCount >= 4 ? (
+        <div className="bg-red-600 text-white p-6 rounded-[2rem] shadow-xl flex items-center gap-6 animate-pulse">
+          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl">
+            <FontAwesomeIcon icon={faBan} />
           </div>
           <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase">Next Lecture</p>
-            <p className="text-sm font-bold text-gray-800">{subjectData.schedule}</p>
+            <h2 className="text-xl font-black uppercase tracking-tight">Academic Restriction</h2>
+            <p className="text-red-100 font-medium">You have exceeded 4 absences. You are prohibited from the {id} final exam.</p>
           </div>
         </div>
+      ) : missedCount === 3 ? (
+        <div className="bg-orange-500 text-white p-6 rounded-[2rem] shadow-xl flex items-center gap-6">
+          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-3xl">
+            <FontAwesomeIcon icon={faExclamationTriangle} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-tight">Attendance Warning</h2>
+            <p className="text-orange-100 font-medium">You have 3 absences. One more will result in a final exam prohibition.</p>
+          </div>
+        </div>
+      ) : null}
+
+      <header>
+        <h1 className="text-4xl font-black text-gray-900 uppercase italic leading-none">{id}</h1>
+        <p className="text-gray-500 font-medium mt-2">Latest updates and your current academic standing.</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-       
-        <div className="lg:col-span-2 space-y-8">
-          <section>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-                <FontAwesomeIcon icon={faBullhorn} className="text-blue-900" />
-                Latest Announcements
-              </h2>
-            </div>
-            
-            <div className="bg-white p-8 rounded-[2.5rem] border-l-8 border-l-blue-900 border border-gray-100 shadow-sm relative group transition-all hover:shadow-md">
-              <div className="relative z-10">
-                <p className="text-gray-700 font-medium leading-relaxed italic text-lg">
-                  "The lecture notes for Chapter 4 have been uploaded. Please review the antenna gain calculations before next Monday's session."
-                </p>
-                <div className="mt-6 flex items-center gap-3 border-t border-gray-50 pt-4">
-                  <div className="w-8 h-8 bg-blue-100 text-blue-900 rounded-full flex items-center justify-center text-xs font-black">
-                    <FontAwesomeIcon icon={faUserGraduate} />
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    Posted by Course Instructor • Today at 09:45 AM
-                  </span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-         
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-center gap-4">
-              <FontAwesomeIcon icon={faInfoCircle} className="text-blue-900 text-xl" />
-              <p className="text-xs text-blue-900 font-medium leading-relaxed">
-                You have {subjectData.materialsCount} new files available in the <strong>Course Materials</strong> section.
-              </p>
-            </div>
+     
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Total Absences</p>
+            <p className={`text-5xl font-black ${missedCount >= 4 ? 'text-red-600' : 'text-gray-900'}`}>{missedCount}</p>
           </div>
+          <Link href={`/dashboard/student/subject/${id}/attendance`} className="text-[10px] font-black uppercase text-blue-900 hover:underline mt-6 flex items-center gap-2">
+            View Attendance Log <FontAwesomeIcon icon={faChevronRight} />
+          </Link>
         </div>
-
         
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-3">
-            <FontAwesomeIcon icon={faClock} className="text-red-600" />
-            Urgent Tasks
-          </h2>
-
-          <div className="space-y-4">
-            {assignments.length > 0 ? (
-              assignments.map((asm) => (
-                <div key={asm.id} className="bg-white p-6 rounded-3xl border border-red-100 shadow-sm group">
-                  <div className="flex items-start gap-3 mb-4">
-                    <FontAwesomeIcon icon={faExclamationTriangle} className="text-red-500 mt-1" />
-                    <div>
-                      <h4 className="font-bold text-gray-800 leading-tight">{asm.title}</h4>
-                      <p className="text-[10px] font-black text-red-500 uppercase mt-1">Deadline: {asm.deadline}</p>
-                    </div>
-                  </div>
-                  <button className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2">
-                    Submit Now <FontAwesomeIcon icon={faArrowRight} />
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-10 border-2 border-dashed border-gray-100 rounded-3xl">
-                <p className="text-gray-400 text-sm italic">All assignments are up to date.</p>
-              </div>
-            )}
+        <Link href={`/dashboard/student/subject/${id}/materials`} className="bg-blue-900 p-8 rounded-[2.5rem] text-white shadow-lg flex flex-col justify-between group hover:scale-[1.02] transition-all">
+          <div className="flex justify-between items-start">
+            <FontAwesomeIcon icon={faBookOpen} className="text-2xl text-blue-300 group-hover:rotate-12 transition-transform" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">Materials</span>
           </div>
-        </div>
+          <div className="mt-8">
+            <p className="text-2xl font-bold mb-2">Lecture Slides & Sheets</p>
+            <p className="text-xs font-black uppercase text-blue-300 group-hover:text-white transition-colors flex items-center gap-2">
+              Browse Files <FontAwesomeIcon icon={faChevronRight} />
+            </p>
+          </div>
+        </Link>
       </div>
+
+      
+      <section className="space-y-6">
+        <h3 className="font-black text-gray-400 text-[10px] uppercase tracking-[0.2em] ml-4">Recent Broadcasts</h3>
+        <div className="space-y-4">
+          {announcements.map((ann) => (
+            <div key={ann.id} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex gap-6">
+                <div className="w-12 h-12 bg-blue-50 text-blue-900 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl">
+                  <FontAwesomeIcon icon={faBullhorn} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-gray-800 font-medium leading-relaxed mb-4">{ann.text}</p>
+                  
+                 
+                  {ann.file && (
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 inline-flex items-center gap-3">
+                      <FontAwesomeIcon icon={ann.file.type === "image" ? faImage : faFilePdf} className="text-gray-400" />
+                      <span className="text-xs font-bold text-gray-600">{ann.file.name}</span>
+                      <a 
+                        href={ann.file.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="ml-4 text-[10px] font-black uppercase text-blue-900 hover:underline"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-gray-400 font-bold uppercase flex items-center gap-2 mt-6">
+                    <FontAwesomeIcon icon={faClock} /> {ann.date}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
