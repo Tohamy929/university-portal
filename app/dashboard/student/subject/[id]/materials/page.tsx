@@ -1,10 +1,23 @@
 "use client";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFilePdf, faImage, faDownload, faFolderOpen } from "@fortawesome/free-solid-svg-icons";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function StudentMaterials() {
   const { id } = useParams();
+  const [materialsCount, setMaterialsCount] = useState(0);
+  
+  // Get materials count from centralized source
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const course = departmentData?.courses.find(c => c.id === id);
+    if (course) {
+      setMaterialsCount(course.materialsCount);
+    }
+  }, [id]);
   
   // This mock data would eventually be filtered from DEPARTMENT_DATA
   const materials = [
@@ -22,7 +35,7 @@ export default function StudentMaterials() {
         </div>
         <div className="bg-blue-50 text-blue-900 px-4 py-2 rounded-2xl font-bold text-sm flex items-center gap-2 border border-blue-100">
           <FontAwesomeIcon icon={faFolderOpen} />
-          {materials.length} Files Available
+          {materialsCount || materials.length} Files Available
         </div>
       </div>
 

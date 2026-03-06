@@ -1,174 +1,274 @@
 "use client";
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
-  faRobot, faKeyboard, faCheck, faTimes, faSave, 
-  faUserPlus, faSpinner, faPlayCircle, faUserCheck, faArrowLeft 
+  faUserCheck, faCloudUploadAlt, faRobot, faCamera, 
+  faCheck, faUserTimes, faSearch, faTimes, faVideo,
+  faSync, faCalendarWeek, faLayerGroup, faBookOpen
 } from "@fortawesome/free-solid-svg-icons";
 
-interface AttendanceStudent {
-  id: string;
-  name: string;
-  status: "present" | "absent";
-  confidence?: number;
-}
+import { MOCK_USERS, User } from "@/lib/mockUsers";
 
-export default function TeacherAttendance() {
-  const { id } = useParams();
-  const [step, setStep] = useState<"setup" | "scanning" | "report" | "success">("setup");
-  const [method, setMethod] = useState<"AI" | "Manual" | null>(null);
-  const [selectedSession, setSelectedSession] = useState("");
-  const [showMissingPool, setShowMissingPool] = useState(false);
-  const [students, setStudents] = useState<AttendanceStudent[]>([]);
+export default function AttendancePage() {
+  const params = useParams();
+  const router = useRouter();
+  
+  
+  const [students, setStudents] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [setup, setSetup] = useState({ group: "", type: "", week: "" });
+  
+  
+  const [isStarted, setIsStarted] = useState(false);
+  const [activeModal, setActiveModal] = useState<"live" | "capture" | null>(null);
+  const [scanStatus, setScanStatus] = useState("Standing by for face scan...");
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fullGroupList = [
-    { id: "20210101", name: "Ahmed Ali" },
-    { id: "20210502", name: "Sherrif Mahmoud" },
-    { id: "20210903", name: "Youssef Sedik" },
-    { id: "20210888", name: "Sara Hassan" },
-    { id: "20210777", name: "Karim Walid" },
-  ];
+ 
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const captureRef = useRef<HTMLVideoElement>(null);
 
-  const startSession = () => {
-    if (!selectedSession || !method) return alert("Please select a session and method.");
-    if (method === "Manual") {
-      setStudents(fullGroupList.map(s => ({ ...s, status: "absent" })));
-      setStep("report");
-    } else {
-      setStep("scanning");
-      setTimeout(() => {
-        setStudents(fullGroupList.map((s, idx) => ({
-          ...s,
-          status: idx < 2 ? "present" : "absent",
-          confidence: idx < 2 ? 0.95 : 0,
-        })));
-        setStep("report");
-      }, 2500);
+  useEffect(() => {
+    const teacherDept = localStorage.getItem("userDept") || "Electrical";
+    const deptStudents = MOCK_USERS.filter((u: User) => u.role === "student" && u.department === teacherDept);
+    const sorted = deptStudents.sort((a, b) => a.name.localeCompare(b.name));
+    setStudents(sorted.map(s => ({ ...s, present: false })));
+  }, []);
+
+  
+  const filteredStudents = students.filter(s => 
+    s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    s.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // --- CAMERA UTILITIES ---
+  const startStream = async (videoElement: HTMLVideoElement | null) => {
+    if (!videoElement) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      videoElement.srcObject = stream;
+    } catch (err) {
+      alert("Camera access denied. Please check browser permissions.");
+      setActiveModal(null);
     }
   };
 
-  const handleUpload = () => {
-    // In a real app, you'd send 'students' to your database here
-    setStep("success");
+  const stopStream = (videoElement: HTMLVideoElement | null) => {
+    if (videoElement?.srcObject) {
+      (videoElement.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      videoElement.srcObject = null;
+    }
   };
 
-  const resetSession = () => {
-    setStep("setup");
-    setMethod(null);
-    setSelectedSession("");
-    setShowMissingPool(false);
-    setStudents([]);
+  const takePhoto = () => {
+    if (captureRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = captureRef.current.videoWidth;
+      canvas.height = captureRef.current.videoHeight;
+      canvas.getContext("2d")?.drawImage(captureRef.current, 0, 0);
+      setCapturedImage(canvas.toDataURL("image/png"));
+      stopStream(captureRef.current);
+    }
   };
 
-  const toggleStatus = (studentId: string) => {
-    setStudents(prev => prev.map(s => 
-      s.id === studentId ? { ...s, status: s.status === "present" ? "absent" : "present" } : s
-    ));
+  // --- ATTENDANCE LOGIC ---
+  const toggleAttendance = (id: string) => {
+    setStudents(prev => prev.map(s => s.id === id ? { ...s, present: !s.present } : s));
   };
+
+ const submitAttendance = () => {
+  setIsSubmitting(true);
+  
+
+  const subjectId = String(params.id); 
+
+  const sessionRecord = {
+    id: Date.now().toString(),
+    subjectId: subjectId,
+    week: setup.week, // e.g., "1"
+    group: setup.group,
+    type: setup.type,
+    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    presentCount: students.filter(s => s.present).length,
+    total: students.length,
+    taken: true,
+    roster: students.map(s => ({ 
+      id: s.id, 
+      name: s.name, 
+      status: s.present ? 'present' : 'absent' 
+    }))
+  };
+
+  const existingHistory = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
+  localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existingHistory]));
+
+  setTimeout(() => {
+   
+    router.push(`/dashboard/teacher/subject/${subjectId}/attendance/manage`);
+  }, 1500);
+};
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
-      <header className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Attendance Session</h1>
-          <p className="text-gray-500 font-bold uppercase text-xs tracking-widest mt-1">
-            {id} • {selectedSession || "Select Session"}
-          </p>
+    <div className="space-y-10 pb-40">
+      
+      {!isStarted ? (
+        /* --- 1. SETUP VIEW --- */
+        <div className="bg-white p-12 rounded-[4rem] shadow-2xl max-w-2xl mx-auto space-y-10 border border-gray-100 animate-in fade-in zoom-in-95">
+           <div className="text-center space-y-2">
+              <h2 className="text-3xl font-black uppercase italic text-blue-900">Session Setup</h2>
+              <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Select Logistics</p>
+           </div>
+           <div className="grid grid-cols-1 gap-6">
+              <select onChange={(e) => setSetup({...setup, week: e.target.value})} className="p-5 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-blue-900 appearance-none">
+                 <option value="">Select Week</option>
+                 {[1,2,3,4,5,6,7,8,9,10,11,12,13,14].map(w => <option key={w} value={w}>Week {w}</option>)}
+              </select>
+              <select onChange={(e) => setSetup({...setup, group: e.target.value})} className="p-5 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-blue-900 appearance-none">
+                 <option value="">Select Group</option>
+                 <option value="G1">Group 1</option><option value="G2">Group 2</option>
+              </select>
+              <select onChange={(e) => setSetup({...setup, type: e.target.value})} className="p-5 bg-gray-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-blue-900 appearance-none">
+                 <option value="">Select Type</option>
+                 <option value="Lecture">Lecture</option><option value="Section">Section</option>
+              </select>
+           </div>
+           <button 
+             disabled={!setup.week || !setup.group || !setup.type}
+             onClick={() => setIsStarted(true)}
+             className="w-full py-6 bg-blue-900 text-white rounded-[2rem] font-black uppercase tracking-widest disabled:opacity-20 transition-all hover:bg-blue-800"
+           >
+             Open Attendance Log
+           </button>
         </div>
-        {step === "report" && (
-          <button onClick={handleUpload} className="bg-green-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg flex items-center gap-2 hover:bg-green-700 transition-all">
-            <FontAwesomeIcon icon={faSave} /> Upload Report
-          </button>
-        )}
-      </header>
+      ) : (
+        /* --- 2. ACTIVE ATTENDANCE VIEW --- */
+        <div className="space-y-10 animate-in fade-in duration-500">
+           {/* TOP ACTION BAR WITH SEARCH */}
+           <div className="bg-white p-8 rounded-[3.5rem] shadow-sm flex flex-col lg:flex-row justify-between items-center gap-6 border border-gray-100">
+              <div className="flex items-center gap-4">
+                 <div className="p-4 bg-blue-900 text-white rounded-2xl shadow-lg"><FontAwesomeIcon icon={faUserCheck} /></div>
+                 <div>
+                    <h1 className="font-black text-xl uppercase italic">{setup.type}: {params.id}</h1>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Week {setup.week} • {setup.group}</p>
+                 </div>
+              </div>
 
-      {/* STEP 1: SETUP */}
-      {step === "setup" && (
-        <div className="bg-white p-10 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <button onClick={() => setMethod("AI")} className={`p-10 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-4 ${method === 'AI' ? 'border-blue-900 bg-blue-50 shadow-inner' : 'border-gray-50 hover:border-blue-100 bg-white'}`}>
-              <FontAwesomeIcon icon={faRobot} className={`text-4xl ${method === 'AI' ? 'text-blue-900' : 'text-gray-200'}`} />
-              <p className={`font-black uppercase text-xs tracking-widest ${method === 'AI' ? 'text-blue-900' : 'text-gray-400'}`}>AI Recognition</p>
-            </button>
-            <button onClick={() => setMethod("Manual")} className={`p-10 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-4 ${method === 'Manual' ? 'border-blue-900 bg-blue-50 shadow-inner' : 'border-gray-50 hover:border-blue-100 bg-white'}`}>
-              <FontAwesomeIcon icon={faKeyboard} className={`text-4xl ${method === 'Manual' ? 'text-blue-900' : 'text-gray-200'}`} />
-              <p className={`font-black uppercase text-xs tracking-widest ${method === 'Manual' ? 'text-blue-900' : 'text-gray-400'}`}>Manual List</p>
-            </button>
-          </div>
+              <div className="flex flex-wrap items-center gap-4">
+                 {/* SEARCH BAR */}
+                 <div className="relative">
+                    <FontAwesomeIcon icon={faSearch} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 text-xs" />
+                    <input 
+                      type="text" 
+                      placeholder="Find Student..." 
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-[10px] font-black uppercase outline-none focus:border-blue-900 w-48 transition-all"
+                    />
+                 </div>
+                 <button 
+                    onClick={() => { setActiveModal("live"); setTimeout(() => startStream(videoRef.current), 100); }} 
+                    className="px-6 py-3 bg-blue-900 text-white rounded-xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-blue-800 transition-all shadow-md"
+                 >
+                    <FontAwesomeIcon icon={faRobot} /> AI Scan
+                 </button>
+                 <button 
+                    onClick={() => { setActiveModal("capture"); setTimeout(() => startStream(captureRef.current), 100); }} 
+                    className="px-6 py-3 bg-gray-900 text-white rounded-xl font-black text-[10px] uppercase flex items-center gap-2 hover:bg-black transition-all shadow-md"
+                 >
+                    <FontAwesomeIcon icon={faCamera} /> Snap
+                 </button>
+              </div>
+           </div>
 
-          <div className="max-w-md mx-auto space-y-4">
-            <select className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl outline-none font-bold text-gray-700" onChange={(e) => setSelectedSession(e.target.value)} value={selectedSession}>
-              <option value="">Select Group & Type...</option>
-              <optgroup label="Group 1"><option value="G1-Lecture">Group 1 - Lecture</option><option value="G1-Section">Group 1 - Section</option></optgroup>
-              <optgroup label="Group 2"><option value="G2-Lecture">Group 2 - Lecture</option><option value="G2-Section">Group 2 - Section</option></optgroup>
-            </select>
-            <button onClick={startSession} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black shadow-lg hover:bg-blue-800 transition flex items-center justify-center gap-3">
-              <FontAwesomeIcon icon={faPlayCircle} /> Launch Session
-            </button>
+           {/* POLISHED STUDENT GRID */}
+           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {filteredStudents.map(s => (
+                <button 
+                  key={s.id} 
+                  onClick={() => toggleAttendance(s.id)}
+                  className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 group ${s.present ? 'bg-green-50 border-green-200 shadow-inner' : 'bg-white border-gray-100 hover:border-blue-200'}`}
+                >
+                  <p className={`font-black text-[10px] uppercase truncate w-full ${s.present ? 'text-green-900' : 'text-gray-900'}`}>{s.name}</p>
+                  <p className="text-[8px] font-bold text-gray-400">{s.id}</p>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${s.present ? 'bg-green-600 text-white shadow-lg' : 'bg-gray-100 text-gray-300'}`}>
+                     <FontAwesomeIcon icon={s.present ? faCheck : faUserTimes} />
+                  </div>
+                </button>
+              ))}
+           </div>
+
+           {/* FINAL SUBMIT BAR */}
+           <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-3xl z-50">
+              <div className="bg-gray-900 text-white p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl border border-white/10 backdrop-blur-md bg-opacity-95">
+                 <div className="px-4">
+                    <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest">Marked Present</p>
+                    <p className="text-2xl font-black italic">{students.filter(s => s.present).length} / {students.length}</p>
+                 </div>
+                 <button onClick={submitAttendance} disabled={isSubmitting} className="bg-blue-600 px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-500 active:scale-95 transition-all shadow-xl">
+                    {isSubmitting ? "Syncing..." : "Finalize Session"}
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* --- MODAL 1: LIVE AI SCANNER --- */}
+      {activeModal === "live" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/60 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-2xl rounded-[4rem] overflow-hidden shadow-2xl border-8 border-white">
+            <div className="relative aspect-video bg-black">
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+              <div className="absolute top-6 left-6 flex items-center gap-3 bg-red-600 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase shadow-lg">
+                <div className="w-2 h-2 bg-white rounded-full animate-ping"></div> AI Active
+              </div>
+            </div>
+            <div className="p-10 text-center space-y-6">
+              <div>
+                <p className="text-blue-900 font-black text-xl uppercase italic tracking-tight">{scanStatus}</p>
+                <p className="text-gray-400 text-[10px] font-bold uppercase mt-1">Stand still for 2-3 seconds</p>
+              </div>
+              <button 
+                onClick={() => { stopStream(videoRef.current); setActiveModal(null); }}
+                className="bg-gray-900 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-all"
+              >
+                Stop AI Session
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* STEP 2: SCANNING */}
-      {step === "scanning" && (
-        <div className="bg-blue-900 p-20 rounded-[3rem] text-white text-center shadow-2xl">
-          <FontAwesomeIcon icon={faSpinner} spin className="text-6xl text-blue-300 mb-6" />
-          <h2 className="text-3xl font-black">AI Analyzing...</h2>
+      {/* --- MODAL 2: PHOTO CAPTURE --- */}
+      {activeModal === "capture" && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/60 animate-in zoom-in-95 duration-300">
+          <div className="bg-white w-full max-w-xl rounded-[4rem] overflow-hidden shadow-2xl border-8 border-white text-center">
+            {!capturedImage ? (
+              <>
+                <div className="relative aspect-square bg-black">
+                  <video ref={captureRef} autoPlay playsInline className="w-full h-full object-cover" />
+                </div>
+                <div className="p-10">
+                  <button onClick={takePhoto} className="w-20 h-20 bg-blue-900 text-white rounded-full shadow-2xl border-8 border-blue-100 flex items-center justify-center text-2xl mx-auto hover:scale-110 active:scale-95 transition-transform">
+                    <FontAwesomeIcon icon={faCamera} />
+                  </button>
+                  <button onClick={() => { stopStream(captureRef.current); setActiveModal(null); }} className="mt-6 text-gray-400 font-black text-[10px] uppercase tracking-widest">Cancel</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <img src={capturedImage} alt="Capture" className="w-full aspect-square object-cover" />
+                <div className="p-10 grid grid-cols-2 gap-4">
+                  <button onClick={() => setCapturedImage(null)} className="py-4 bg-gray-100 text-gray-500 rounded-2xl font-black text-[10px] uppercase tracking-widest">Discard</button>
+                  <button onClick={() => { setActiveModal(null); stopStream(captureRef.current); }} className="py-4 bg-blue-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">Process Photo</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
-      {/* STEP 3: REPORT */}
-      {step === "report" && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] border-b">
-                <tr><th className="p-6">Student</th><th className="p-6 text-center">Status</th><th className="p-6 text-right">Action</th></tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {students.filter(s => (method === "AI" && !showMissingPool ? s.status === "present" : true)).map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50/50">
-                    <td className="p-6"><p className="font-bold text-gray-800">{student.name}</p><p className="text-[10px] text-gray-400 font-bold">{student.id}</p></td>
-                    <td className="p-6 text-center">
-                      <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase ${student.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {student.status}
-                      </span>
-                    </td>
-                    <td className="p-6 text-right">
-                      <button onClick={() => toggleStatus(student.id)} className={`w-10 h-10 rounded-full ${student.status === 'present' ? 'text-red-400 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}>
-                        <FontAwesomeIcon icon={student.status === 'present' ? faTimes : faCheck} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {method === "AI" && !showMissingPool && (
-            <button onClick={() => setShowMissingPool(true)} className="w-full py-5 border-2 border-dashed border-blue-200 rounded-3xl text-blue-900 font-bold hover:bg-blue-50 transition-all flex items-center justify-center gap-3">
-              <FontAwesomeIcon icon={faUserPlus} /> Review Missing Students
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* STEP 4: SUCCESS / RETURN */}
-      {step === "success" && (
-        <div className="bg-white p-20 rounded-[3rem] border border-gray-100 shadow-xl text-center space-y-6">
-          <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-            <FontAwesomeIcon icon={faUserCheck} />
-          </div>
-          <h2 className="text-3xl font-black text-gray-900">Attendance Recorded!</h2>
-          <p className="text-gray-500 max-w-sm mx-auto font-medium">The session data for {selectedSession} has been successfully uploaded to the HTI server.</p>
-          <button 
-            onClick={resetSession}
-            className="mt-8 bg-blue-900 text-white px-10 py-4 rounded-2xl font-black shadow-lg hover:scale-105 transition-all flex items-center gap-3 mx-auto"
-          >
-            <FontAwesomeIcon icon={faArrowLeft} /> Finish & Return
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,18 +1,26 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faUsers, faFileSignature, faExclamationCircle, faArrowRight, 
   faChartPie, faTimes, faUserGraduate, faIdBadge, faChevronRight, faFileAlt
 } from "@fortawesome/free-solid-svg-icons";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function TeacherSubjectHome() {
   const { id } = useParams();
   const router = useRouter();
-
-  // State to handle which list we are viewing: all, prohibited, or ungraded
   const [viewingList, setViewingList] = useState<"all" | "prohibited" | "ungraded" | null>(null);
+  const [courseInfo, setCourseInfo] = useState<any>(null);
+
+  // Get course info from centralized data
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const course = departmentData?.courses.find(c => c.id === id);
+    setCourseInfo(course);
+  }, [id]);
 
   // Mock Student Database
   const students = [

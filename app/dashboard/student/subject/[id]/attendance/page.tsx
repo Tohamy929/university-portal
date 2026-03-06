@@ -1,9 +1,22 @@
 "use client";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheckCircle, faTimesCircle, faMinusCircle } from "@fortawesome/free-solid-svg-icons";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function StudentSubjectAttendance() {
+  const { id } = useParams();
+  const [courseInfo, setCourseInfo] = useState<any>(null);
   const weeks = Array.from({ length: 14 }, (_, i) => i + 1);
+
+  // Get course info from centralized data
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const course = departmentData?.courses.find(c => c.id === id);
+    setCourseInfo(course);
+  }, [id]);
 
   // Mock data representing the 2 lectures per week
   // In a real app, this would come from the backend array
@@ -23,7 +36,7 @@ export default function StudentSubjectAttendance() {
         </div>
         <div className="text-right">
           <p className="text-sm font-bold text-gray-400 uppercase tracking-widest">Attendance Rate</p>
-          <p className="text-3xl font-black text-blue-900">75%</p>
+          <p className="text-3xl font-black text-blue-900">{courseInfo?.attendanceRate || 75}%</p>
         </div>
       </div>
       

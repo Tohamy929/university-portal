@@ -1,17 +1,27 @@
 "use client";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faExclamationTriangle, faBan, faChevronRight, 
   faClock, faBookOpen, faBullhorn, faImage, faFilePdf 
 } from "@fortawesome/free-solid-svg-icons";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function StudentSubjectHome() {
   const { id } = useParams();
-  const missedCount = 3; 
+  const [courseInfo, setCourseInfo] = useState<any>(null);
+  const missedCount = 3;
 
- 
+  // Get course info from centralized data
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const course = departmentData?.courses.find(c => c.id === id);
+    setCourseInfo(course);
+  }, [id]);
+
   const announcements = [
     { 
       id: 1, 

@@ -1,0 +1,1 @@
+export default function Test() { return <h1>Path is Working</h1> }

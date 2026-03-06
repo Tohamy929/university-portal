@@ -1,15 +1,25 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faCloudUploadAlt, faFilePdf, faCheckCircle, 
   faClock, faExclamationCircle, faTimes 
 } from "@fortawesome/free-solid-svg-icons";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function StudentAssignments() {
   const { id } = useParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [courseAssignments, setCourseAssignments] = useState<any[]>([]);
+  
+  // Get assignments for this course from centralized source
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const assignments = departmentData?.assignments.filter(a => a.courseId === id) || [];
+    setCourseAssignments(assignments);
+  }, [id]);
   
   const [assignments, setAssignments] = useState([
     { id: "asm-1", title: "Assignment 1: Circuit Analysis", status: "graded", grade: 18, max: 20, deadline: "Closed" },

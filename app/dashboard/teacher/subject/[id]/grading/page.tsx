@@ -1,157 +1,155 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
-  faEdit, faSave, faUsers, faCheckCircle, 
-  faUndo, faUserGraduate, faIdBadge 
+  faSave, faUserGraduate, faCheckCircle, 
+  faExclamationTriangle, faFileExport, faSearch 
 } from "@fortawesome/free-solid-svg-icons";
 
-export default function TeacherGrading() {
-  const { id } = useParams();
-  const [isEditing, setIsEditing] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState("");
-  const [category, setCategory] = useState<"lecture_att" | "section_att" | "quizzes" | "assignments" | "midterm">("assignments");
+// IMPORT CENTRAL DATA
+import { MOCK_USERS, User } from "@/lib/mockUsers"; 
 
-  // Mock data setup
-  const [students, setStudents] = useState([
-    { id: "20210101", name: "Ahmed Ali", lecture_att: 10, section_att: 10, quizzes: 15, assignments: null, midterm: 14 },
-    { id: "20210502", name: "Mona Zaki", lecture_att: 6, section_att: 8, quizzes: 10, assignments: null, midterm: 8 },
-  ]);
+export default function GradingPage() {
+  const params = useParams();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [students, setStudents] = useState<any[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
-  const maxGrades: any = { 
-    lecture_att: 10, 
-    section_att: 10, 
-    quizzes: 20, 
-    assignments: 20, 
-    midterm: 20 
+  useEffect(() => {
+    // 1. Get Teacher Department from Storage
+    const teacherDept = localStorage.getItem("userDept") || "Electrical";
+
+    // 2. Filter MOCK_USERS to find only STUDENTS in this department
+    const departmentStudents = MOCK_USERS.filter(
+      (user: User) => user.role === "student" && user.department === teacherDept
+    );
+
+    // 3. Initialize the grading list
+    const initialList = departmentStudents.map((s: User) => ({
+      id: s.id.toUpperCase(),
+      name: s.name,
+      dept: s.department,
+      lecture_att: 0,
+      section_att: 0,
+      quizzes: 0,
+      assignments: 0,
+      midterm: 0,
+      total: 0
+    }));
+
+    setStudents(initialList);
+  }, []);
+
+  const handleGradeChange = (id: string, field: string, value: string) => {
+    const numValue = Math.min(Math.max(parseFloat(value) || 0, 0), 100);
+    setStudents(prev => prev.map(s => {
+      if (s.id === id) {
+        const updated = { ...s, [field]: numValue };
+        // Auto-total
+        updated.total = updated.lecture_att + updated.section_att + updated.quizzes + updated.assignments + updated.midterm;
+        return updated;
+      }
+      return s;
+    }));
   };
 
-  // 1. Initial Group Selection View
-  if (!selectedGroup) {
-    return (
-      <div className="max-w-md mx-auto mt-20 p-10 bg-white rounded-[3rem] border border-gray-100 shadow-xl text-center space-y-6 animate-in zoom-in-95">
-        <div className="w-20 h-20 bg-blue-50 text-blue-900 rounded-3xl flex items-center justify-center mx-auto text-3xl">
-          <FontAwesomeIcon icon={faUsers} />
-        </div>
+  const saveGrades = () => {
+    setIsSaving(true);
+    setTimeout(() => {
+      setIsSaving(false);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    }, 1500);
+  };
+
+  const filteredStudents = students.filter(s => 
+    s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    s.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
         <div>
-          <h2 className="text-2xl font-black text-gray-900">Select Academic Group</h2>
-          <p className="text-gray-400 font-medium italic">Viewing data for {id}</p>
+          <h1 className="text-2xl font-black text-gray-900 uppercase italic flex items-center gap-3">
+            <FontAwesomeIcon icon={faUserGraduate} className="text-blue-900" />
+            Grading Center
+          </h1>
+          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mt-1">
+            Subject: <span className="text-blue-900">{params.id}</span>
+          </p>
         </div>
-        <div className="space-y-3">
+
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <FontAwesomeIcon icon={faSearch} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 text-xs" />
+            <input 
+              type="text" 
+              placeholder="Search Student..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-900 w-64"
+            />
+          </div>
           <button 
-            onClick={() => setSelectedGroup("Group 1")}
-            className="w-full p-5 bg-gray-50 border-2 border-transparent hover:border-blue-900 hover:bg-white rounded-2xl font-bold text-gray-700 transition-all text-left flex justify-between items-center"
+            onClick={saveGrades}
+            disabled={isSaving}
+            className="bg-blue-900 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-blue-800 disabled:opacity-50 transition-all"
           >
-            Group 1 
-          </button>
-          <button 
-            onClick={() => setSelectedGroup("Group 2")}
-            className="w-full p-5 bg-gray-50 border-2 border-transparent hover:border-blue-900 hover:bg-white rounded-2xl font-bold text-gray-700 transition-all text-left flex justify-between items-center"
-          >
-            Group 2 
+            <FontAwesomeIcon icon={isSaving ? faExclamationTriangle : faSave} spin={isSaving} />
+            {isSaving ? "Saving..." : "Save All"}
           </button>
         </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in">
-      <header className="flex flex-col xl:flex-row justify-between items-center gap-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setSelectedGroup("")} className="w-10 h-10 rounded-xl bg-white border border-gray-100 text-gray-400 hover:text-blue-900 shadow-sm flex items-center justify-center transition-all">
-            <FontAwesomeIcon icon={faUndo} />
-          </button>
-          <div>
-            <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">{selectedGroup} Grades</h1>
-            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{id}</p>
-          </div>
+      {showSuccess && (
+        <div className="bg-green-500 text-white p-4 rounded-2xl flex items-center justify-center gap-3 font-black text-[10px] uppercase tracking-widest animate-bounce">
+          <FontAwesomeIcon icon={faCheckCircle} />
+          Data Synchronized with Academic Records
         </div>
-        
-        {/* Category Selector - Now treats Lectures and Sections as Attendance Types */}
-        <div className="flex flex-wrap justify-center gap-2 bg-white p-2 rounded-[2rem] border border-gray-100 shadow-sm">
-          {[
-            { id: "lecture_att", label: "Lec. Att" },
-            { id: "section_att", label: "Sec. Att" },
-            { id: "quizzes", label: "Quizzes" },
-            { id: "assignments", label: "Assignments" },
-            { id: "midterm", label: "Midterm" }
-          ].map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => { setCategory(cat.id as any); setIsEditing(false); }}
-              className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${category === cat.id ? "bg-blue-900 text-white shadow-lg scale-105" : "text-gray-400 hover:bg-gray-50"}`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
-      </header>
+      )}
 
-      <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
-        <div className="p-8 bg-gray-50/50 border-b flex justify-between items-center">
-          <div className="flex items-center gap-3 text-blue-900 font-black uppercase text-sm italic">
-             Managing: {category.replace('_', ' ')}
-          </div>
-          <button 
-            onClick={() => setIsEditing(!isEditing)} 
-            className={`px-8 py-3 rounded-2xl font-bold shadow-md transition-all ${isEditing ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-blue-900 text-white hover:bg-blue-800'}`}
-          >
-            <FontAwesomeIcon icon={isEditing ? faSave : faEdit} className="mr-2" />
-            {isEditing ? "Save Report" : "Modify Grades"}
-          </button>
-        </div>
-
-        <table className="w-full text-left">
-          <thead className="bg-white text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b">
-            <tr>
-              <th className="p-8">Student Detail</th>
-              <th className="p-8">Current Grade</th>
-              <th className="p-8 text-right">Review Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {students.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50/30 transition-colors group">
-                <td className="p-8">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center group-hover:bg-blue-900 group-hover:text-white transition-all">
-                      <FontAwesomeIcon icon={faUserGraduate} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-gray-900 leading-tight">{s.name}</p>
-                      <p className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1">
-                        <FontAwesomeIcon icon={faIdBadge} size="xs" /> {s.id}
-                      </p>
-                    </div>
-                  </div>
-                </td>
-                <td className="p-8">
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      disabled={!isEditing}
-                      placeholder="--"
-                      defaultValue={s[category] ?? ""} 
-                      className="w-20 p-3 bg-gray-50 border border-gray-100 rounded-xl font-black outline-none focus:ring-2 focus:ring-blue-900 disabled:bg-transparent disabled:border-transparent transition-all"
-                    />
-                    <span className="text-xs font-bold text-gray-300">/ {maxGrades[category]}</span>
-                  </div>
-                </td>
-                <td className="p-8 text-right">
-                  {s[category] === null ? (
-                    <span className="text-[10px] font-black uppercase text-orange-500 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100">Pending</span>
-                  ) : (
-                    <span className="text-[10px] font-black uppercase text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-100">
-                      <FontAwesomeIcon icon={faCheckCircle} className="mr-1" /> Finalized
-                    </span>
-                  )}
-                </td>
+      <div className="bg-white rounded-[3rem] border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50 border-b border-gray-100">
+                <th className="p-6 text-[9px] font-black text-gray-400 uppercase tracking-widest">Student</th>
+                <th className="p-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Lec</th>
+                <th className="p-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Sec</th>
+                <th className="p-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Quiz</th>
+                <th className="p-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Assign</th>
+                <th className="p-4 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Mid</th>
+                <th className="p-6 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-50 text-sm">
+              {filteredStudents.map((student) => (
+                <tr key={student.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <td className="p-6">
+                    <p className="font-black text-gray-900">{student.name}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">{student.id}</p>
+                  </td>
+                  {["lecture_att", "section_att", "quizzes", "assignments", "midterm"].map((field) => (
+                    <td key={field} className="p-2 text-center">
+                      <input 
+                        type="number" 
+                        value={student[field]}
+                        onChange={(e) => handleGradeChange(student.id, field, e.target.value)}
+                        className="w-14 p-2 bg-gray-50 border border-transparent rounded-lg text-center font-bold text-xs focus:border-blue-900 outline-none"
+                      />
+                    </td>
+                  ))}
+                  <td className="p-6 text-center font-black text-blue-900">
+                    {student.total}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

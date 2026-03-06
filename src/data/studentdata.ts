@@ -1,7 +1,8 @@
+// 1. ALL INTERFACES FIRST
 export interface Course {
   id: string;
   name: string;
-  attendanceRate: number; 
+  attendanceRate: number;
   materialsCount: number;
   schedule: string;
   letterGrade?: string;
@@ -19,9 +20,15 @@ export interface Announcement {
 export interface Assignment {
   id: number;
   title: string;
-  courseId: string; 
+  courseId: string;
   deadline: string;
   status: 'pending' | 'delivered';
+}
+
+export interface HistoryRecord {
+  semester: string;
+  gpa: number;
+  subjects: string[];
 }
 
 export interface DepartmentContent {
@@ -44,23 +51,42 @@ export interface DepartmentContent {
   };
 }
 
-
-export const MOCK_TERM_STATS = { 
-  gpa: 3.65, 
-  status: "Excellent", 
-  credits: 18 
-};
-
-export const MOCK_ANNOUNCEMENTS: Announcement[] = [
+export interface StudentData {
+  profile: {
+    fullName: string;
+    studentId: string;
+    phoneNumber: string;
+    totalGpa: number;
+    avatar: string;
+  };
+  currentSemester: {
+    id: string;
+    title: string;
+    time: string;
+    room: string;
+  }[];
+  history: HistoryRecord[];
+}
+export interface RosterStudent {
+  id: string;
+  name: string;
+  dept: string;
+  email: string;
+}
+export const MOCK_ANNOUNCEMENTS = [
   { id: 1, title: "Midterm Exam Schedule - Spring 2026", sender: "Dean's Office", date: "1 hour ago", priority: "high" },
   { id: 2, title: "Registration for Summer Internships", sender: "Eng. Hassan", date: "Yesterday", priority: "normal" }
 ];
 
-
 export const MOCK_OVERDUE = [
   { id: 1, task: "Lab Safety Certification", subject: "General Engineering", days: 2 }
 ];
-
+// 2. RAW DATA SECOND (Define this before the function!)
+export const MOCK_TERM_STATS = {
+  gpa: 3.65,
+  status: "Excellent",
+  credits: 18
+};
 
 export const DEPARTMENT_DATA: Record<string, DepartmentContent> = {
   Electrical: {
@@ -123,3 +149,31 @@ export const DEPARTMENT_DATA: Record<string, DepartmentContent> = {
     }
   }
 };
+
+// 3. FUNCTIONS THIRD
+export function getStudentDataByDepartment(department: string): StudentData {
+  const departmentContent = DEPARTMENT_DATA[department];
+
+  return {
+    profile: {
+      fullName: "Student User",
+      studentId: "32021567",
+      phoneNumber: "+20 102 345 6789",
+      totalGpa: MOCK_TERM_STATS.gpa,
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${department}`
+    },
+    currentSemester: departmentContent?.courses.map(course => ({
+      id: course.id,
+      title: course.name,
+      time: course.schedule,
+      room: "TBD"
+    })) || [],
+    history: [
+      { semester: "Fall 2025", gpa: 3.4, subjects: ["Mathematics 1", "Physics 1"] },
+      { semester: "Spring 2025", gpa: 3.1, subjects: ["Mathematics 2", "Circuit 1"] },
+    ]
+  };
+}
+
+// 4. DEFAULT EXPORTS LAST
+export const STUDENT_DATA: StudentData = getStudentDataByDepartment("Electrical");

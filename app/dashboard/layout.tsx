@@ -13,12 +13,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const params = useParams();
   const router = useRouter();
-  
+  const SUBJECT_MAP: Record<string, string> = {
+  "microwave-engineering": "Microwave Engineering",
+  "control-systems": "Control Systems",
+  "logic-design": "Logic Design",
+  "communication-engineering-1": "Communication Engineering 1",
+  "communication-engineering-2": "Communication Engineering 2",
+  "digital-signal-processing": "Digital Signal Processing",
+  "satellite-engineering": "Satellite Engineering"
+};
   const [role, setRole] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isAttendanceOpen, setIsAttendanceOpen] = useState(false);
   
  
+ const rawId = params?.id as string;
+
+const getSubjectDisplayName = (id: string) => {
+  if (!id) return "Details";
+  
+  // 1. Try to find the clean name in our map (Best Method)
+  if (SUBJECT_MAP[id]) return SUBJECT_MAP[id];
+
+  // 2. If not found (like if the URL has %20), clean it manually one last time
+  return decodeURIComponent(id)
+    .replace(/%20/g, " ")
+    .replace(/-/g, " ")
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const subjectName = getSubjectDisplayName(rawId);
   const isSubjectPage = pathname.includes("/subject/");
 
   useEffect(() => {
@@ -55,9 +81,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col relative overflow-x-hidden">
       
-     
+      {/* SUBJECT NAVBAR */}
       {isSubjectPage && (
-        <nav className="sticky top-0 left-0 right-0 z-[200] bg-blue-900 text-white px-6 h-20 flex items-center justify-between shadow-2xl">
+        <nav className="fixed top-0 left-0 right-0 z-[200] bg-blue-900 text-white px-6 h-20 flex items-center justify-between shadow-2xl">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => router.back()} 
@@ -65,9 +91,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <FontAwesomeIcon icon={faArrowLeft} />
             </button>
-            <div className="max-w-[150px] sm:max-w-none">
+            <div className="max-w-[200px] sm:max-w-none">
               <p className="text-[10px] font-black uppercase text-blue-300 tracking-widest leading-none mb-1">Subject</p>
-              <h2 className="font-bold text-sm truncate uppercase tracking-tight">{params.id || "Details"}</h2>
+              <h2 className="font-bold text-sm truncate uppercase tracking-tight italic">
+                {subjectName}
+              </h2>
             </div>
           </div>
 
@@ -83,7 +111,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
       )}
 
-     
+      {/* Spacer */}
+      {isSubjectPage && <div className="h-20 w-full shrink-0"></div>}
+
+      {/* MENU OVERLAY */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-[150] bg-blue-900 text-white flex flex-col p-8 overflow-y-auto pt-24 animate-in fade-in zoom-in-95 duration-200">
           <div className="space-y-4 max-w-lg mx-auto w-full pb-20">
@@ -138,7 +169,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-     
+      {/* CONTENT AREA */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-10">
         {children}
       </main>

@@ -1,11 +1,23 @@
 "use client";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faExclamationTriangle, faCheckCircle, faLock, faInfoCircle } from "@fortawesome/free-solid-svg-icons";
+import { DEPARTMENT_DATA } from "@/src/data/studentdata";
 
 export default function StudentGrades() {
   const { id } = useParams();
+  const [courseName, setCourseName] = useState<string>("Course");
   
+  // Get course data from centralized source
+  useEffect(() => {
+    const userDept = localStorage.getItem("userDept") || "Electrical";
+    const departmentData = DEPARTMENT_DATA[userDept];
+    const course = departmentData?.courses.find(c => c.id === id);
+    if (course) {
+      setCourseName(course.name);
+    }
+  }, [id]);
   
   const attendanceStats = { missed: 4, limit: 4 }; 
   const isProhibited = attendanceStats.missed >= attendanceStats.limit;
