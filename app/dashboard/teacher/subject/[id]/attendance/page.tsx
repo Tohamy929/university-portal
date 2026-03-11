@@ -5,7 +5,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faUserCheck, faCloudUploadAlt, faRobot, faCamera, 
   faCheck, faUserTimes, faSearch, faTimes, faSync,
-  faCalendarWeek, faLayerGroup, faBookOpen, faLink, faUnlink
+  faCalendarWeek, faLayerGroup, faBookOpen, faLink, faUnlink,
+  faCircleNotch
 } from "@fortawesome/free-solid-svg-icons";
 
 import { MOCK_USERS, User } from "@/lib/mockUsers";
@@ -24,6 +25,7 @@ export default function AttendancePage() {
   const [activeModal, setActiveModal] = useState<"live" | "capture" | null>(null);
   const [scanStatus, setScanStatus] = useState("Standing by...");
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false); // NEW: Device Sync State
   const [lastMatchedId, setLastMatchedId] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,16 +41,14 @@ export default function AttendancePage() {
   useEffect(() => {
     const checkServer = async () => {
       try {
-        // Pinging the base endpoint to check connectivity
-        const res = await fetch("http://127.0.0.1:8000/", { method: "GET", mode: 'no-cors' });
+        await fetch("http://127.0.0.1:8000/", { method: "GET", mode: 'no-cors' });
         setAiServerOnline(true);
       } catch (e) {
         setAiServerOnline(false);
       }
     };
-
     checkServer();
-    const interval = setInterval(checkServer, 5000); // Check every 5 seconds
+    const interval = setInterval(checkServer, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -59,23 +59,56 @@ export default function AttendancePage() {
     setStudents(sorted.map(s => ({ ...s, present: false })));
   }, []);
 
-  // --- AI INTEGRATION LOGIC ---
+  // --- NEW: SYNC TO LOCAL DEVICE STORAGE ---
+  const syncToDevice = async (updatedStudents: any[]) => {
+    if (!aiServerOnline) return;
+    setIsSyncing(true);
+    try {
+      const payload = {
+        subjectId: params.id,
+        week: setup.week,
+        group: setup.group,
+        timestamp: new Date().toISOString(),
+        students: updatedStudents.map(s => ({
+          id: s.id,
+          name: s.name,
+          present: s.present
+        }))
+      };
 
+      await fetch("http://127.0.0.1:8000/sync_roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.warn("Device sync failed.");
+    } finally {
+      // Small delay so the spinner is visible to the user
+      setTimeout(() => setIsSyncing(false), 800);
+    }
+  };
+
+  // --- AI INTEGRATION LOGIC ---
   const markStudentPresent = (id: string) => {
-    setStudents(prev => prev.map(s => 
+    const newStudents = students.map(s => 
       s.id.toLowerCase() === id.toLowerCase() ? { ...s, present: true } : s
-    ));
+    );
+    setStudents(newStudents);
     setLastMatchedId(id);
     setScanStatus(`Match Confirmed: ${id.toUpperCase()}`);
+    syncToDevice(newStudents);
   };
 
   const handleRescan = () => {
     if (lastMatchedId) {
-      setStudents(prev => prev.map(s => 
+      const newStudents = students.map(s => 
         s.id.toLowerCase() === lastMatchedId.toLowerCase() ? { ...s, present: false } : s
-      ));
+      );
+      setStudents(newStudents);
       setLastMatchedId(null);
       setScanStatus("Match cleared. Rescanning...");
+      syncToDevice(newStudents);
     }
   };
 
@@ -105,7 +138,7 @@ export default function AttendancePage() {
         if (data.student_id) markStudentPresent(data.student_id);
       }
     } catch (err) {
-      setScanStatus("AI Server Connection Interrupted");
+      setScanStatus("AI Connection Interrupted");
     } finally {
       setIsAiProcessing(false);
       if (activeModal === "live") setTimeout(processLiveFrame, 3000);
@@ -135,14 +168,13 @@ export default function AttendancePage() {
         }
       }
     } catch (err) {
-      alert("AI Server Offline. Verify your friend's local script.");
+      alert("AI Server Offline.");
     } finally {
       setIsAiProcessing(false);
     }
   };
 
   // --- CAMERA CONTROLS ---
-
   const startStream = async (el: HTMLVideoElement | null) => {
     if (!el) return;
     try {
@@ -162,8 +194,10 @@ export default function AttendancePage() {
     }
   };
 
-  const submitAttendance = () => {
+  const submitAttendance = async () => {
     setIsSubmitting(true);
+    await syncToDevice(students); // Final sync to file
+
     const subjectId = String(params.id);
     const sessionRecord = {
       id: Date.now().toString(),
@@ -229,9 +263,19 @@ export default function AttendancePage() {
                     <h1 className="font-black text-xl uppercase italic">{setup.type}: {params.id}</h1>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Week {setup.week} • {setup.group}</p>
-                      <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${aiServerOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                        <FontAwesomeIcon icon={aiServerOnline ? faLink : faUnlink} />
-                        {aiServerOnline ? "AI Online" : "AI Offline"}
+                      
+                      {/* UPDATED STATUS & SYNC INDICATORS */}
+                      <div className="flex items-center gap-2">
+                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${aiServerOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          <FontAwesomeIcon icon={aiServerOnline ? faLink : faUnlink} />
+                          {aiServerOnline ? "AI Online" : "AI Offline"}
+                        </div>
+                        {isSyncing && (
+                          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-tighter animate-pulse">
+                            <FontAwesomeIcon icon={faCircleNotch} className="animate-spin" />
+                            Device Syncing
+                          </div>
+                        )}
                       </div>
                     </div>
                  </div>
@@ -249,7 +293,15 @@ export default function AttendancePage() {
 
            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {filteredStudents.map(s => (
-                <button key={s.id} onClick={() => setStudents(prev => prev.map(item => item.id === s.id ? {...item, present: !item.present} : item))} className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${s.present ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}>
+                <button 
+                  key={s.id} 
+                  onClick={() => {
+                    const newStudents = students.map(item => item.id === s.id ? {...item, present: !item.present} : item);
+                    setStudents(newStudents);
+                    syncToDevice(newStudents);
+                  }} 
+                  className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${s.present ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}
+                >
                   <p className={`font-black text-[10px] uppercase truncate w-full ${s.present ? 'text-green-900' : 'text-gray-900'}`}>{s.name}</p>
                   <p className="text-[8px] font-bold text-gray-400">{s.id}</p>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${s.present ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-300'}`}><FontAwesomeIcon icon={s.present ? faCheck : faTimes} size="xs" /></div>
@@ -297,12 +349,7 @@ export default function AttendancePage() {
               <>
                 <div className="relative aspect-square bg-black">
                   <video ref={captureRef} autoPlay playsInline className="w-full h-full object-cover" />
-                  <button 
-                    onClick={() => { stopStream(captureRef.current); setActiveModal(null); }}
-                    className="absolute top-6 right-6 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
-                  >
-                    <FontAwesomeIcon icon={faTimes} />
-                  </button>
+                  <button onClick={() => { stopStream(captureRef.current); setActiveModal(null); }} className="absolute top-6 right-6 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"><FontAwesomeIcon icon={faTimes} /></button>
                 </div>
                 <div className="p-10">
                   <button onClick={() => {
