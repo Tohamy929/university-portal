@@ -25,19 +25,25 @@ export default function AttendancePage() {
   const [activeModal, setActiveModal] = useState<"live" | "capture" | null>(null);
   const [scanStatus, setScanStatus] = useState("Standing by...");
   const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false); // NEW: Device Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
   const [lastMatchedId, setLastMatchedId] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // SERVER STATUS STATE
   const [aiServerOnline, setAiServerOnline] = useState<boolean | null>(null);
 
-  // REFS
+  // REFS FOR STALE CLOSURE PROTECTION
   const videoRef = useRef<HTMLVideoElement>(null);
   const captureRef = useRef<HTMLVideoElement>(null);
+  const studentsRef = useRef<any[]>([]);
+  const isAiProcessingRef = useRef(false);
+  const activeModalRef = useRef<string | null>(null);
 
-  // --- HEARTBEAT: CHECK LOCAL AI SERVER ---
+  // Sync refs with state
+  useEffect(() => { studentsRef.current = students; }, [students]);
+  useEffect(() => { isAiProcessingRef.current = isAiProcessing; }, [isAiProcessing]);
+  useEffect(() => { activeModalRef.current = activeModal; }, [activeModal]);
+
+  // --- HEARTBEAT ---
   useEffect(() => {
     const checkServer = async () => {
       try {
@@ -59,7 +65,7 @@ export default function AttendancePage() {
     setStudents(sorted.map(s => ({ ...s, present: false })));
   }, []);
 
-  // --- NEW: SYNC TO LOCAL DEVICE STORAGE ---
+  // --- SYNC TO DEVICE ---
   const syncToDevice = async (updatedStudents: any[]) => {
     if (!aiServerOnline) return;
     setIsSyncing(true);
@@ -69,13 +75,8 @@ export default function AttendancePage() {
         week: setup.week,
         group: setup.group,
         timestamp: new Date().toISOString(),
-        students: updatedStudents.map(s => ({
-          id: s.id,
-          name: s.name,
-          present: s.present
-        }))
+        students: updatedStudents.map(s => ({ id: s.id, name: s.name, present: s.present }))
       };
-
       await fetch("http://127.0.0.1:8000/sync_roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,14 +85,14 @@ export default function AttendancePage() {
     } catch (err) {
       console.warn("Device sync failed.");
     } finally {
-      // Small delay so the spinner is visible to the user
       setTimeout(() => setIsSyncing(false), 800);
     }
   };
 
-  // --- AI INTEGRATION LOGIC ---
+  // --- AI LOGIC (FIXED FOR STALE CLOSURES) ---
   const markStudentPresent = (id: string) => {
-    const newStudents = students.map(s => 
+    const currentStudents = studentsRef.current;
+    const newStudents = currentStudents.map(s => 
       s.id.toLowerCase() === id.toLowerCase() ? { ...s, present: true } : s
     );
     setStudents(newStudents);
@@ -102,7 +103,8 @@ export default function AttendancePage() {
 
   const handleRescan = () => {
     if (lastMatchedId) {
-      const newStudents = students.map(s => 
+      const currentStudents = studentsRef.current;
+      const newStudents = currentStudents.map(s => 
         s.id.toLowerCase() === lastMatchedId.toLowerCase() ? { ...s, present: false } : s
       );
       setStudents(newStudents);
@@ -113,7 +115,8 @@ export default function AttendancePage() {
   };
 
   const processLiveFrame = async () => {
-    if (!videoRef.current || activeModal !== "live" || isAiProcessing) return;
+    // Check REFS instead of STATE to avoid stale closures
+    if (!videoRef.current || activeModalRef.current !== "live" || isAiProcessingRef.current) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = videoRef.current.videoWidth;
@@ -127,7 +130,7 @@ export default function AttendancePage() {
     formData.append("file", blob, "frame.jpg");
 
     try {
-      setIsAiProcessing(true);
+      setIsAiProcessing(true); // This updates the ref via useEffect
       const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
         body: formData,
@@ -141,7 +144,7 @@ export default function AttendancePage() {
       setScanStatus("AI Connection Interrupted");
     } finally {
       setIsAiProcessing(false);
-      if (activeModal === "live") setTimeout(processLiveFrame, 3000);
+      if (activeModalRef.current === "live") setTimeout(processLiveFrame, 3000);
     }
   };
 
@@ -180,7 +183,8 @@ export default function AttendancePage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       el.srcObject = stream;
-      if (activeModal === "live") setTimeout(processLiveFrame, 2000);
+      // Small delay to let the ref update before the first frame processes
+      if (activeModalRef.current === "live") setTimeout(processLiveFrame, 2000);
     } catch (e) {
       alert("Camera Permission Error");
       setActiveModal(null);
@@ -196,8 +200,7 @@ export default function AttendancePage() {
 
   const submitAttendance = async () => {
     setIsSubmitting(true);
-    await syncToDevice(students); // Final sync to file
-
+    await syncToDevice(students);
     const subjectId = String(params.id);
     const sessionRecord = {
       id: Date.now().toString(),
@@ -211,10 +214,8 @@ export default function AttendancePage() {
       taken: true,
       roster: students.map(s => ({ id: s.id, name: s.name, status: s.present ? 'present' : 'absent' }))
     };
-
     const existingHistory = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
     localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existingHistory]));
-
     setTimeout(() => {
       router.push(`/dashboard/teacher/subject/${subjectId}/attendance/manage`);
     }, 1000);
@@ -228,7 +229,6 @@ export default function AttendancePage() {
   return (
     <div className="space-y-10 pb-40">
       {!isStarted ? (
-        /* SETUP SECTION */
         <div className="bg-white p-12 rounded-[4rem] shadow-2xl max-w-2xl mx-auto space-y-10 border border-gray-100 animate-in fade-in zoom-in-95">
            <h2 className="text-3xl font-black text-center uppercase italic text-blue-900">Session Setup</h2>
            <div className="grid grid-cols-1 gap-6">
@@ -254,7 +254,6 @@ export default function AttendancePage() {
            </button>
         </div>
       ) : (
-        /* MAIN INTERFACE */
         <div className="space-y-10 animate-in fade-in duration-500">
            <div className="bg-white p-8 rounded-[3.5rem] shadow-sm flex flex-col lg:flex-row justify-between items-center gap-6 border border-gray-100">
               <div className="flex items-center gap-4">
@@ -263,8 +262,6 @@ export default function AttendancePage() {
                     <h1 className="font-black text-xl uppercase italic">{setup.type}: {params.id}</h1>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Week {setup.week} • {setup.group}</p>
-                      
-                      {/* UPDATED STATUS & SYNC INDICATORS */}
                       <div className="flex items-center gap-2">
                         <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${aiServerOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                           <FontAwesomeIcon icon={aiServerOnline ? faLink : faUnlink} />
