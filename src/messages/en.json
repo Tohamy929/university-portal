@@ -1,0 +1,98 @@
+{
+  "settings": {
+    "preferences": "Preferences",
+    "darkMode": "Dark Mode",
+    "language": "Language"
+  },
+  "attendance": {
+    "setupTitle": "Session Setup",
+    "openLog": "Open Attendance Log",
+    "switchCamera": "Flip Camera"
+  },
+  "student": {
+    "loading": "Loading Academic Record...",
+    "studentRole": "Student",
+    "tabs": {
+      "current": "Current",
+      "history": "History",
+      "profile": "Profile"
+    },
+    "current": {
+      "title": "Current Courses",
+      "welcome": "Welcome back",
+      "gpa": "GPA Status"
+    },
+    "history": {
+      "title": "Academic Progress",
+      "gpa": "GPA"
+    },
+    "profile": {
+      "name": "Full Academic Name",
+      "id": "System ID",
+      "phone": "Phone Record",
+      "security": "Account Security",
+      "currentPass": "Current Password",
+      "newPass": "New Password",
+      "update": "Update Credentials"
+    },
+    "qr": {
+      "title": "QR Attendance Scanner",
+      "subtitle": "Point your camera at the active QR code on the board.",
+      "startCamera": "Open Camera",
+      "stopCamera": "Close Camera",
+      "scanning": "Scanning for QR Code...",
+      "success": "Attendance Registered!",
+      "successSub": "You have been marked present for this session.",
+      "failed": "Invalid or Expired QR Code.",
+      "retry": "Scan Again",
+      "simScan": "Simulate Scan (Test Mode)",
+      "faceTitle": "Face Verification",
+      "faceSubtitle": "Position your face in the frame to prove your presence.",
+      "captureFace": "Capture Face",
+      "switchCamera": "Flip Camera",
+      "qrScanTitle": "Scan Session QR",
+      "qrScanSubtitle": "Now point your camera at the board."
+    },
+    "log": {
+      "title": "My Attendance Log",
+      "stats": "Attendance Stats",
+      "attended": "Attended",
+      "missed": "Missed",
+      "percentage": "Percentage",
+      "date": "Date",
+      "type": "Session Type",
+      "status": "Status",
+      "present": "Present",
+      "absent": "Absent",
+      "openScanner": "Scan QR Code",
+      "noRecords": "No attendance records found for this subject."
+    },
+    "login": {
+    "welcome": "Welcome Back",
+    "subtitle": "Sign in to the HTI Portal",
+    "username": "Username",
+    "password": "Password",
+    "signIn": "Sign In",
+    "signingIn": "Authenticating...",
+    "errorGeneric": "An error occurred. Please try again."
+  },
+  "register": {
+    "title": "Create an Account",
+    "subtitle": "Join the HTI Portal",
+    "roleStudent": "Student",
+    "roleTeacher": "Teacher",
+    "roleAdmin": "Admin",
+    "fullName": "Full Name",
+    "username": "Username",
+    "email": "Email Address",
+    "password": "Password",
+    "studentId": "Student ID",
+    "department": "Department",
+    "signUp": "Create Account",
+    "signingUp": "Creating...",
+    "backToLogin": "Already have an account? Sign In",
+    "success": "Account created successfully! Redirecting to login..."
+  }
+
+  }
+}

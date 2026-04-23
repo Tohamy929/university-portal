@@ -2,117 +2,136 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faLock, faSpinner, faArrowLeft, faExclamationCircle } from "@fortawesome/free-solid-svg-icons";
+import { faSpinner, faExclamationTriangle, faHome } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 
-// Import your mock users to validate credentials locally
-import { MOCK_USERS } from "@/lib/mockUsers";
-
 export default function LoginPage() {
+  const router = useRouter();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-  const router = useRouter();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError("");
+    setErrorMessage(null);
 
-    // Simulate a network delay for realism
-    setTimeout(() => {
-      // 1. Find the user in our local mock data
-      const user = MOCK_USERS.find(
-        (u) => u.email.toLowerCase() === username.toLowerCase() && u.password === password
-      );
+    try {
+      // 1. CALL LOGIN API
+      const loginResponse = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/Login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "accept": "*/*" },
+        body: JSON.stringify({ username, password })
+      });
 
-      if (user) {
-        // 2. Clear old data and save new session info
-        localStorage.clear();
-        localStorage.setItem("userEmail", user.email);
-        localStorage.setItem("userRole", user.role);
-        localStorage.setItem("userDept", user.department);
-        localStorage.setItem("userName", user.name);
-
-        // 3. Redirect based on role
-        router.push(`/dashboard/${user.role}`);
-      } else {
-        setError("Invalid email or password. Please try again.");
-        setIsLoading(false);
+      if (!loginResponse.ok) {
+        const errorText = await loginResponse.text(); 
+        throw new Error(`Login Failed (${loginResponse.status}): ${errorText || "Invalid username or password."}`);
       }
-    }, 1000); 
+
+      // Read the response from the server
+      const responseText = await loginResponse.text();
+      let data;
+      try {
+         data = JSON.parse(responseText);
+      } catch (err) {
+         // Sometimes ASP.NET backends return the token as a plain string, not JSON!
+         data = { token: responseText }; 
+      }
+
+      // Check all common ways a backend might name the token variable
+      const token = data.jwtToken || data.token || data.jwt || data.accessToken || data.data?.token || (typeof data === 'string' ? data : null);
+      
+      if (!token || token === "undefined") {
+        console.error("Backend Response:", data);
+        throw new Error("Login succeeded, but no Token was found in the response! Check the browser console.");
+      }
+
+      // Save token securely
+      localStorage.setItem("authToken", token);
+
+      // 2. GET USER INFO
+      const userInfoResponse = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetUserInfo", {
+        method: "GET",
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+          "accept": "*/*" 
+        }
+      });
+
+      if (!userInfoResponse.ok) {
+        const errorText = await userInfoResponse.text();
+        throw new Error(`GetUserInfo Failed (${userInfoResponse.status}): The server rejected the token. Details: ${errorText}`);
+      }
+
+      const userInfo = await userInfoResponse.json();
+      
+      // Attempt to extract the role safely
+      const userRole = (userInfo.role || userInfo.roles?.[0] || "student").toLowerCase();
+      
+      localStorage.setItem("userEmail", userInfo.email || username); 
+      localStorage.setItem("userRole", userRole);
+      
+      // 3. DYNAMIC ROUTING
+      if (userRole === "admin" || userRole === "administrator") {
+        router.push("/dashboard/admin");
+      } else if (userRole === "teacher") {
+        router.push("/dashboard/teacher");
+      } else {
+        router.push("/dashboard/student");
+      }
+
+    } catch (error: any) {
+      setErrorMessage(error.message);
+      // Clear out the token if we hit a wall so we don't get stuck in a bad state
+      localStorage.removeItem("authToken"); 
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md space-y-8 bg-white p-10 rounded-[3rem] shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-500">
-        
-        <Link href="/" className="inline-flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-blue-900 transition mb-6 group">
-          <FontAwesomeIcon icon={faArrowLeft} className="group-hover:-translate-x-1 transition-transform" />
-          Back to Home
+    <div className="relative min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-6 transition-colors duration-300">
+      
+      <div className="absolute top-8 left-8 rtl:left-auto rtl:right-8 z-10">
+        <Link href="/" className="flex items-center gap-3 px-5 py-3 bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 hover:text-blue-900 dark:hover:text-blue-400 rounded-2xl shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-800 text-[10px] font-black uppercase tracking-widest transition-all">
+          <FontAwesomeIcon icon={faHome} className="text-sm" />
+          <span className="hidden sm:inline">Back to Home</span>
         </Link>
+      </div>
 
-        <header className="text-center space-y-2">
-          <div className="w-20 h-20 bg-blue-900 text-white rounded-[2rem] flex items-center justify-center mx-auto text-3xl shadow-lg mb-4">
-            <span className="font-black italic text-2xl">HTI</span>
+      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-[3rem] shadow-2xl p-10 border border-gray-100 dark:border-gray-800 transition-colors animate-in fade-in zoom-in-95 duration-500">
+        
+        <div className="flex flex-col items-center text-center mb-10">
+          <div className="w-20 h-20 bg-blue-900 dark:bg-blue-600 text-white rounded-[2rem] flex items-center justify-center font-black italic text-2xl shadow-xl mb-6">HTI</div>
+          <h1 className="text-3xl font-black uppercase tracking-tight text-gray-900 dark:text-white">Welcome Back</h1>
+          <p className="text-sm font-bold text-gray-500 dark:text-gray-400 mt-2">Sign in to the HTI Portal</p>
+        </div>
+
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-start gap-3 text-red-600 dark:text-red-400">
+            <FontAwesomeIcon icon={faExclamationTriangle} className="mt-1 shrink-0" />
+            <p className="text-[10px] font-bold uppercase tracking-widest leading-relaxed break-words w-full">{errorMessage}</p>
           </div>
-          <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Welcome back!</h1>
-          <p className="text-gray-400 text-xs font-medium">Enter your academic credentials</p>
-        </header>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-4">
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-xs font-bold animate-shake">
-                <FontAwesomeIcon icon={faExclamationCircle} />
-                {error}
-              </div>
-            )}
-
-            <div className="relative group">
-              <FontAwesomeIcon icon={faUser} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-900 transition-colors" />
-              <input 
-                type="text" 
-                required
-                placeholder="Email (e.g., student1@hti.edu.eg)"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-14 pr-6 py-5 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-900 transition-all font-medium"
-              />
-            </div>
-
-            <div className="relative group">
-              <FontAwesomeIcon icon={faLock} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-blue-900 transition-colors" />
-              <input 
-                type="password" 
-                required
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-14 pr-6 py-5 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-900 transition-all font-medium"
-              />
-            </div>
+          <div className="space-y-2">
+            <label className="ms-2 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Username</label>
+            <input type="text" required value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
           </div>
 
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full py-5 bg-blue-900 text-white rounded-2xl font-black shadow-lg hover:bg-blue-800 transition-all flex items-center justify-center gap-3 disabled:opacity-70 active:scale-95"
-          >
-            {isLoading ? (
-              <FontAwesomeIcon icon={faSpinner} spin />
-            ) : (
-              "Sign In"
-            )}
+          <div className="space-y-2">
+            <label className="ms-2 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Password</label>
+            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
+          </div>
+
+          <button type="submit" disabled={isLoading} className="w-full py-5 mt-4 bg-blue-900 dark:bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 flex justify-center items-center gap-3">
+            {isLoading ? <><FontAwesomeIcon icon={faSpinner} className="animate-spin" /> Authenticating...</> : "Sign In"}
           </button>
         </form>
-
-        <footer className="text-center pt-4 border-t border-gray-50 mt-4">
-          <p className="text-[9px] font-black text-gray-300 uppercase tracking-[0.2em] leading-relaxed">
-            HTI Academic Portal • v2.0
-          </p>
-        </footer>
       </div>
     </div>
   );
