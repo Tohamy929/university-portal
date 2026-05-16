@@ -3,245 +3,434 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
-  faBook, faHistory, faUserCog, faSignOutAlt, faClock, 
-  faCalendarAlt, faLock, faCheckCircle, faChevronRight, 
-  faCamera, faPhone, faUserCircle, faStar, faGraduationCap
+  faGraduationCap, faQrcode, faBell, faUserCircle, 
+  faCamera, faExclamationTriangle, faCheckCircle, 
+  faTimes, faChevronRight, faStar, faSpinner, faPhone, faSignOutAlt, faSyncAlt, faCheck
 } from "@fortawesome/free-solid-svg-icons";
 
-// IMPORT CENTRAL DATA
-import { getStudentDataByDepartment, StudentData } from "@/src/data/studentdata";
-import { MOCK_USERS } from "@/lib/mockUsers";
-
-// IMPORT TRANSLATION HOOK
-import { useTranslation } from "@/src/context/TranslationContext";
-
-export default function StudentLobby() {
-  const [activeTab, setActiveTab] = useState<"current" | "history" | "profile">("current");
-  const [studentData, setStudentData] = useState<StudentData | null>(null);
-  const [profileImage, setProfileImage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function StudentDashboard() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // INIT TRANSLATIONS
-  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<"home" | "profile" | "schedule">("home");
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [actionMessage, setActionMessage] = useState<{ type: "success" | "error" | "warning", text: string } | null>(null);
+  
+  // LIVE DATA STATES
+  const [studentData, setStudentData] = useState<any>(null);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  // FORM STATES
+  const [passwordForm, setPasswordForm] = useState({ oldPassword: "", newPassword: "", confirmPassword: "" });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [phoneInput, setPhoneInput] = useState("");
+
+  // --- TWO-STEP SCANNER STATES ---
+  const [scannerState, setScannerState] = useState<"closed" | "qr" | "selfie" | "processing" | "success">("closed");
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const loggedInEmail = localStorage.getItem("userEmail");
-    const currentUser = MOCK_USERS.find(user => 
-      user.email.toLowerCase() === loggedInEmail?.toLowerCase()
-    );
-
-    if (currentUser) {
-      const deptData = getStudentDataByDepartment(currentUser.department);
+    const token = localStorage.getItem("authToken");
+    if (!token) { router.push("/login"); return; }
+    setAuthToken(token);
+    
+    // FETCH LIVE USER INFO
+    fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetUserInfo", {
+      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+    })
+    .then(async (res) => {
+      const text = await res.text();
+      if (!res.ok) throw new Error(text);
+      return JSON.parse(text);
+    })
+    .then(data => {
+      if (data.role !== "Student") throw new Error("Unauthorized: Not a Student.");
+      
+      localStorage.setItem("studentDatabaseId", data.id.toString());
+      
       setStudentData({
-        ...deptData,
-        profile: {
-          ...deptData.profile,
-          fullName: currentUser.name,
-          studentId: currentUser.id.toUpperCase(),
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.name}`
-        }
+        id: data.id,             
+        code: data.code,         
+        name: data.fullName || data.userName,
+        username: data.userName,
+        email: data.email,
+        phone: data.phoneNumber,
+        dept: data.department,
+        gpa: data.gpa || 0,
+        subjects: data.subjects || [],
+        history: data.academicHistory || []
       });
-      setProfileImage(deptData.profile.avatar);
-    } else {
-      console.warn("No active session found. Redirecting...");
-      router.push("/login");
-    }
+      
+      setPhoneInput(data.phoneNumber || "");
+      setProfileImage(data.imagePath || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.userName}`);
+    })
+    .catch(err => {
+      console.error(err);
+      setActionMessage({ type: "error", text: "Failed to load profile data. Please log in again." });
+      setTimeout(() => { localStorage.clear(); router.push("/login"); }, 3000);
+    })
+    .finally(() => setIsLoading(false));
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setProfileImage(reader.result as string);
-      reader.readAsDataURL(file);
+  // --- LOGOUT LOGIC ---
+  const handleLogout = async () => {
+    try {
+      await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/LogOff", { headers: { "Authorization": `Bearer ${authToken}` } });
+    } catch (e) {
+      console.warn("Logout ping failed, forcing local clear.");
+    } finally {
+      localStorage.clear();
+      router.push("/login");
     }
   };
 
-  // --- LOADING SCREEN ---
-  if (!studentData) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 transition-colors duration-300">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-blue-900 dark:border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-black text-blue-900 dark:text-blue-400 text-[10px] uppercase tracking-widest">
-          {t("student.loading")}
-        </p>
+  // --- PROFILE API: UPLOAD IMAGE ---
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsUpdating(true); setActionMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("File", file);
+
+      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/UploadUserImage", {
+        method: "POST", headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: formData 
+      });
+
+      const text = await response.text();
+      if (!response.ok) throw new Error(`Upload Failed: ${text}`);
+      
+      const data = JSON.parse(text);
+      setProfileImage(data.filePath || URL.createObjectURL(file)); 
+      setActionMessage({ type: "success", text: "Profile picture updated successfully!" });
+    } catch (err: any) {
+      setActionMessage({ type: "error", text: err.message });
+      setProfileImage(URL.createObjectURL(file)); // Optimistic fallback if server fails mapping
+    } finally { setIsUpdating(false); }
+  };
+
+  // --- PROFILE API: CHANGE PASSWORD ---
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setActionMessage({ type: "error", text: "New passwords do not match." }); return;
+    }
+
+    setIsUpdating(true); setActionMessage(null);
+    try {
+      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/ChangePassword", {
+        method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(passwordForm)
+      });
+
+      const text = await response.text();
+      if (!response.ok) {
+        try {
+          const errData = JSON.parse(text);
+          if (errData.errors) throw new Error(Object.values(errData.errors).flat().join(" | "));
+          throw new Error(errData.title || text);
+        } catch { throw new Error(text); }
+      }
+      
+      setActionMessage({ type: "success", text: text || "Password changed successfully!" });
+      setPasswordForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (err: any) {
+      setActionMessage({ type: "error", text: err.message });
+    } finally { setIsUpdating(false); }
+  };
+
+  const handleUpdatePhone = () => { setActionMessage({ type: "warning", text: "Phone update API is currently unhandled by the backend. Contact Admin." }); };
+
+  // --- TWO STEP SCANNER LOGIC ---
+  const launchScanner = (subjectId: string) => {
+    setActiveSubjectId(subjectId);
+    setScannerState("qr");
+    setFacingMode("environment"); // Back camera for QR
+    setTimeout(() => startStream("environment"), 100);
+  };
+
+  const startStream = async (mode: "user" | "environment") => {
+    if (!videoRef.current) return;
+    try {
+      if (videoRef.current.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
+      videoRef.current.srcObject = stream;
+    } catch (e) {
+      alert("Camera Permission Error.");
+      setScannerState("closed");
+    }
+  };
+
+  const stopStream = () => {
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const handleQrSuccess = () => {
+    setScannerState("selfie");
+    setFacingMode("user"); // Front camera for Face ID
+    startStream("user");
+  };
+
+  const captureSelfieAndSend = async () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (ctx && facingMode === 'user') {
+       ctx.translate(canvas.width, 0); ctx.scale(-1, 1);
+    }
+    ctx?.drawImage(videoRef.current, 0, 0);
+    
+    setCapturedImage(canvas.toDataURL("image/jpeg"));
+    stopStream();
+    setScannerState("processing");
+
+    // This is where you will route to local python server!
+    setTimeout(() => {
+      setScannerState("success");
+      setTimeout(() => {
+        setScannerState("closed");
+        router.push(`/dashboard/student/subject/${activeSubjectId}/attendance`);
+      }, 3000);
+    }, 2500);
+  };
+
+
+  if (isLoading || !studentData) {
+    return (
+      <div className="min-h-screen flex flex-col gap-4 items-center justify-center bg-gray-50 uppercase font-black text-blue-900 tracking-widest animate-pulse">
+        <FontAwesomeIcon icon={faSpinner} className="animate-spin text-4xl" />
+        <p className="text-xs">Loading Student Portal...</p>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors duration-300 flex flex-col">
-      {/* --- FIXED NAVBAR --- */}
-      <nav className="fixed top-0 left-0 right-0 z-[100] bg-blue-900 dark:bg-black text-white shadow-2xl h-20 transition-colors duration-300">
-        <div className="w-full h-full px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-white dark:bg-gray-800 text-blue-900 dark:text-white rounded-xl flex items-center justify-center font-black italic shadow-lg shrink-0 transition-colors">HTI</div>
+    <div className="min-h-screen bg-gray-50 flex flex-col transition-colors duration-300">
+      {/* --- NAVBAR --- */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-blue-900 text-white shadow-2xl h-20">
+        <div className="max-w-7xl mx-auto h-full px-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white text-blue-900 rounded-[1rem] flex items-center justify-center text-xl font-black italic shadow-lg shrink-0">HTI</div>
             <div className="hidden sm:block">
-              <h1 className="font-black text-[10px] uppercase tracking-tighter leading-none">{studentData.profile.fullName}</h1>
-              <p className="text-[7px] text-blue-300 dark:text-blue-500 font-bold uppercase mt-1 tracking-widest italic">
-                {localStorage.getItem("userDept")} {t("student.studentRole")}
-              </p>
+              <h1 className="font-black text-xs uppercase tracking-widest truncate max-w-[150px]">{studentData.name}</h1>
+              <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-blue-300 mt-1">{studentData.dept}</p>
             </div>
           </div>
 
-          <div className="flex bg-black/20 dark:bg-white/10 p-1 rounded-2xl border border-white/5 backdrop-blur-md">
-            {["current", "history", "profile"].map((tab) => (
+          <div className="flex bg-black/20 p-1 rounded-2xl backdrop-blur-md">
+            {[
+              { id: "home", label: "Dashboard", icon: faGraduationCap },
+              { id: "profile", label: "Profile", icon: faUserCircle }
+            ].map((t) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab as any)}
-                className={`px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === tab 
-                    ? "bg-white dark:bg-blue-600 text-blue-900 dark:text-white shadow-lg" 
-                    : "text-blue-100 hover:bg-white/10 dark:hover:bg-white/5"
-                }`}
+                key={t.id} onClick={() => { setActiveTab(t.id as any); setActionMessage(null); }}
+                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === t.id ? "bg-white text-blue-900 shadow-lg" : "text-blue-100 hover:bg-white/10"}`}
               >
-                {t(`student.tabs.${tab}`)}
+                <FontAwesomeIcon icon={t.icon} /> <span className="hidden md:block">{t.label}</span>
               </button>
             ))}
           </div>
 
-          <button onClick={handleLogout} className="text-red-400 p-3 hover:bg-red-500/10 rounded-xl transition-all">
-            <FontAwesomeIcon icon={faSignOutAlt} />
-          </button>
+          <button onClick={handleLogout} className="text-red-400 p-4 hover:bg-red-500/10 rounded-xl transition-all"><FontAwesomeIcon icon={faSignOutAlt} /></button>
         </div>
       </nav>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-6 pt-24 md:p-10 md:pt-32 animate-in fade-in duration-500">
+      <main className="flex-1 w-full max-w-7xl mx-auto p-6 pt-28 md:p-10 md:pt-36">
         
-        {/* --- TAB 1: CURRENT SEMESTER --- */}
-        {activeTab === "current" && (
-          <div className="space-y-10">
-            <header className="bg-white dark:bg-gray-900 p-10 rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden transition-colors duration-300">
-               <div className="relative z-10 text-center md:text-left rtl:md:text-right">
-                  <h2 className="text-3xl font-black text-gray-900 dark:text-white uppercase italic">{t("student.current.title")}</h2>
-                  <p className="text-gray-500 dark:text-gray-400 font-medium mt-2">
-                    {t("student.current.welcome")}, {studentData.profile.fullName.split(' ')[0]}
-                  </p>
-               </div>
-               <div className="relative z-10 bg-blue-900 dark:bg-blue-800 text-white p-6 rounded-[2rem] shadow-xl text-center min-w-[150px] transition-colors">
-                  <p className="text-[9px] font-black uppercase text-blue-300 dark:text-blue-200">{t("student.current.gpa")}</p>
-                  <p className="text-4xl font-black italic tracking-tighter">{studentData.profile.totalGpa}</p>
-               </div>
-            </header>
+        {/* GLOBAL ALERTS */}
+        {actionMessage && (
+          <div className={`p-4 mb-8 rounded-2xl flex items-start gap-3 border transition-all ${actionMessage.type === "error" ? "bg-red-50 border-red-200 text-red-600" : actionMessage.type === "warning" ? "bg-yellow-50 border-yellow-200 text-yellow-700" : "bg-green-50 border-green-200 text-green-600"}`}>
+            <FontAwesomeIcon icon={actionMessage.type === "error" ? faExclamationTriangle : faCheckCircle} className="mt-1 shrink-0" />
+            <p className="text-[10px] font-bold uppercase tracking-widest leading-relaxed break-all">{actionMessage.text}</p>
+          </div>
+        )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {studentData.currentSemester.map(sub => (
-                <div key={sub.id} className="bg-white dark:bg-gray-900 p-8 rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-xl transition-all group">
-                  <div className="flex justify-between items-start mb-8">
-                     <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase italic leading-tight">{sub.title}</h3>
-                     <button 
-                        onClick={() => router.push(`/dashboard/student/subject/${sub.id}`)}
-                        className="w-12 h-12 bg-blue-900 dark:bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"
-                     >
-                        <FontAwesomeIcon icon={faChevronRight} className="rtl:rotate-180" />
-                     </button>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                     <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 rounded-xl text-[10px] font-bold text-gray-500 dark:text-gray-400 flex items-center gap-3 transition-colors">
-                        <FontAwesomeIcon icon={faClock} className="text-blue-900 dark:text-blue-400" /> {sub.time}
-                     </div>
-                     <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 rounded-xl text-[10px] font-bold text-gray-500 dark:text-gray-400 flex items-center gap-3 transition-colors">
-                        <FontAwesomeIcon icon={faCalendarAlt} className="text-blue-900 dark:text-blue-400" /> {sub.room}
-                     </div>
-                  </div>
+        {/* --- TAB 1: HOME --- */}
+        {activeTab === "home" && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            
+            {/* HERO BANNER & GPA */}
+            <div className="bg-blue-900 text-white rounded-[3rem] p-10 md:p-14 shadow-2xl relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-8">
+              <div className="relative z-10 text-center md:text-left">
+                <p className="text-blue-300 font-bold uppercase text-[10px] tracking-widest mb-2">Welcome Back,</p>
+                <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight leading-tight">{studentData.name}</h1>
+                <p className="text-blue-200 mt-2 font-medium">Code: {studentData.code}</p>
+              </div>
+              <div className="relative z-10 bg-white text-blue-900 px-10 py-8 rounded-[2rem] text-center shadow-xl border-4 border-blue-800">
+                <p className="text-[9px] font-black uppercase tracking-widest text-blue-400 mb-2">Cumulative GPA</p>
+                <div className="flex items-baseline justify-center gap-1">
+                  <span className="text-5xl font-black italic">{studentData.gpa.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-gray-400">/ 4.0</span>
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* ENROLLED SUBJECTS GRID */}
+            <div>
+               <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4 mb-4">Current Semester</h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {studentData.subjects.length === 0 ? (
+                    <div className="col-span-full p-10 text-center border-2 border-dashed border-gray-200 rounded-[3rem]">
+                       <p className="text-gray-400 font-bold uppercase text-xs tracking-widest">Not enrolled in any subjects.</p>
+                    </div>
+                 ) : (
+                    studentData.subjects.map((sub: any) => (
+                      <div key={sub.id} className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all group flex flex-col justify-between min-h-[200px] relative overflow-hidden">
+                        
+                        <div className="flex justify-between items-start mb-4 relative z-10">
+                          <div className="w-12 h-12 bg-blue-50 text-blue-900 rounded-2xl flex items-center justify-center text-sm font-black">{sub.id}</div>
+                          <button onClick={() => router.push(`/dashboard/student/subject/${sub.id}`)} className="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center hover:bg-blue-900 hover:text-white transition-colors"><FontAwesomeIcon icon={faChevronRight} /></button>
+                        </div>
+                        <h4 className="text-lg font-black text-gray-900 uppercase italic leading-tight relative z-10">{sub.name}</h4>
+                        
+                        {/* ONLY RENDER IF THERE IS AN ACTIVE SESSION (Currently wired to a backend boolean flag if they ever add it, or can be removed if not needed yet) */}
+                        {sub.hasActiveSession && (
+                          <div className="mt-6 relative z-10">
+                            <button onClick={() => launchScanner(sub.id)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-blue-500 animate-pulse">
+                              <FontAwesomeIcon icon={faQrcode} /> Log Attendance Now
+                            </button>
+                          </div>
+                        )}
+                        
+                        {!sub.hasActiveSession && (
+                          <div className="mt-4 pt-4 border-t border-gray-50 relative z-10">
+                            {sub.lectureDates && sub.lectureDates.map((date: string, idx: number) => (
+                               <p key={idx} className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1 truncate">{date}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                 )}
+               </div>
             </div>
           </div>
         )}
 
-        {/* --- TAB 2: HISTORY --- */}
-        {activeTab === "history" && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-3xl font-black text-gray-900 dark:text-white uppercase italic">{t("student.history.title")}</h2>
-            <div className="space-y-6">
-              {studentData.history.map((sem) => (
-                <div key={sem.semester} className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-8 border border-gray-100 dark:border-gray-800 shadow-sm transition-colors">
-                  <div className="flex justify-between items-center mb-6">
-                    <h4 className="font-black text-blue-900 dark:text-blue-400 uppercase tracking-widest text-xs">{sem.semester}</h4>
-                    <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-4 py-1.5 rounded-xl font-black text-[9px]">
-                      {t("student.history.gpa")}: {sem.gpa}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {sem.subjects.map((s) => (
-                      <span key={s} className="px-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl text-[9px] font-bold text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-700 flex items-center gap-2 transition-colors">
-                        <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 dark:text-green-400" /> {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB 3: PROFILE --- */}
+        {/* --- TAB 2: PROFILE --- */}
         {activeTab === "profile" && (
           <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in zoom-in-95 duration-500">
-            <div className="bg-blue-900 dark:bg-blue-950 text-white rounded-[3rem] p-10 shadow-2xl flex flex-col items-center sm:items-start text-center sm:text-left rtl:sm:text-right gap-8 transition-colors">
+            {/* Identity Card */}
+            <div className="bg-blue-900 text-white rounded-[3rem] p-10 shadow-2xl flex flex-col items-center sm:items-start text-center sm:text-left gap-8">
               <div className="relative group">
-                <div className="w-32 h-32 bg-white/10 rounded-[2.5rem] border-4 border-white/20 overflow-hidden flex items-center justify-center">
-                  {profileImage ? (
-                    <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <FontAwesomeIcon icon={faUserCircle} className="text-6xl text-white/10" />
-                  )}
+                <div className="w-32 h-32 bg-white/10 rounded-[2.5rem] border-4 border-white/20 overflow-hidden flex items-center justify-center relative">
+                  <img src={profileImage || ""} alt="Profile" className="w-full h-full object-cover" />
+                  {isUpdating && <div className="absolute inset-0 bg-blue-900/50 flex items-center justify-center"><FontAwesomeIcon icon={faSpinner} className="animate-spin text-white text-2xl" /></div>}
                 </div>
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute -bottom-2 -right-2 rtl:-right-auto rtl:-left-2 w-10 h-10 bg-white dark:bg-gray-800 text-blue-900 dark:text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform active:scale-90"
-                >
+                <input type="file" accept="image/jpeg, image/png, image/webp" ref={fileInputRef} onChange={handleImageUpload} className="hidden" />
+                <button onClick={() => fileInputRef.current?.click()} className="absolute -bottom-2 -right-2 w-10 h-10 bg-white text-blue-900 rounded-full shadow-lg flex items-center justify-center hover:scale-110 active:scale-95 transition-transform group-hover:bg-blue-50">
                   <FontAwesomeIcon icon={faCamera} size="sm" />
                 </button>
-                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
               </div>
 
               <div className="space-y-6 w-full">
-                <div>
-                  <p className="text-[8px] font-black text-blue-300 dark:text-blue-400 uppercase tracking-widest mb-1">{t("student.profile.name")}</p>
-                  <p className="text-xl font-black uppercase tracking-tight">{studentData.profile.fullName}</p>
-                </div>
+                <div><p className="text-[8px] font-black text-blue-300 uppercase tracking-widest mb-1">Student Identity</p><p className="text-xl font-black uppercase tracking-tight">{studentData.name}</p><p className="text-xs font-medium text-blue-200 mt-1">@{studentData.username}</p></div>
                 <div className="pt-6 border-t border-white/10 grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-[8px] font-black text-blue-300 dark:text-blue-400 uppercase tracking-widest mb-1">{t("student.profile.id")}</p>
-                    <p className="font-mono font-bold text-sm tracking-widest">{studentData.profile.studentId}</p>
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-blue-300 dark:text-blue-400 uppercase tracking-widest mb-1">{t("student.profile.phone")}</p>
-                    <p className="font-bold text-[11px]">{studentData.profile.phoneNumber}</p>
-                  </div>
+                  <div><p className="text-[8px] font-black text-blue-300 uppercase tracking-widest mb-1">College Code</p><p className="font-mono font-bold text-sm tracking-widest">{studentData.code}</p></div>
+                  <div><p className="text-[8px] font-black text-blue-300 uppercase tracking-widest mb-1">Department</p><p className="font-bold text-[11px] uppercase truncate" title={studentData.dept}>{studentData.dept}</p></div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-900 p-10 rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col justify-center transition-colors">
-              <h4 className="font-black text-gray-900 dark:text-white uppercase text-xs mb-6">{t("student.profile.security")}</h4>
-              <div className="space-y-4">
-                <input 
-                  type="password" 
-                  placeholder={t("student.profile.currentPass")} 
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-900 dark:focus:ring-blue-500 text-gray-900 dark:text-white transition-all placeholder:text-gray-400" 
-                />
-                <input 
-                  type="password" 
-                  placeholder={t("student.profile.newPass")} 
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-blue-900 dark:focus:ring-blue-500 text-gray-900 dark:text-white transition-all placeholder:text-gray-400" 
-                />
-                <button className="w-full bg-blue-900 dark:bg-blue-600 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:shadow-2xl transition-all">
-                  {t("student.profile.update")}
-                </button>
+            {/* Account Settings */}
+            <div className="space-y-6">
+              <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm flex flex-col justify-center">
+                 <h4 className="font-black text-gray-900 uppercase text-xs mb-6 flex items-center gap-2"><FontAwesomeIcon icon={faPhone} className="text-blue-900" /> Contact Info</h4>
+                 <div className="flex gap-2">
+                    <input type="tel" value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)} placeholder="01XXXXXXXXX" className="flex-1 p-4 bg-gray-50 border border-transparent focus:border-blue-900 outline-none rounded-2xl text-sm font-bold" />
+                    <button onClick={handleUpdatePhone} className="bg-blue-100 text-blue-900 px-6 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-200 transition-colors">Update</button>
+                 </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm flex flex-col justify-center">
+                <h4 className="font-black text-gray-900 uppercase text-xs mb-6">Security Settings</h4>
+                <form className="space-y-4" onSubmit={handleChangePassword}>
+                  <input required type="password" placeholder="Current Password" value={passwordForm.oldPassword} onChange={e => setPasswordForm({...passwordForm, oldPassword: e.target.value})} className="w-full p-4 bg-gray-50 border border-transparent focus:border-blue-900 outline-none rounded-2xl text-sm font-bold" />
+                  <input required type="password" placeholder="New Password" value={passwordForm.newPassword} onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full p-4 bg-gray-50 border border-transparent focus:border-blue-900 outline-none rounded-2xl text-sm font-bold" />
+                  <input required type="password" placeholder="Confirm New Password" value={passwordForm.confirmPassword} onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full p-4 bg-gray-50 border border-transparent focus:border-blue-900 outline-none rounded-2xl text-sm font-bold" />
+                  <button type="submit" disabled={isUpdating} className="w-full bg-blue-900 text-white py-5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all flex justify-center items-center gap-2">
+                    {isUpdating ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Update Password"}
+                  </button>
+                </form>
               </div>
             </div>
+
           </div>
         )}
       </main>
+
+      {/* --- TWO-STEP SCANNER OVERLAY --- */}
+      {scannerState !== "closed" && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-[3rem] p-8 text-center shadow-2xl relative overflow-hidden">
+             
+             {scannerState === "qr" && (
+               <div className="animate-in slide-in-from-right">
+                 <h3 className="text-2xl font-black uppercase text-gray-900 italic mb-2">Step 1: Scan Board</h3>
+                 <p className="text-xs font-bold text-gray-500 mb-6">Point camera at the teacher's screen.</p>
+                 <div className="relative aspect-square bg-black rounded-[2rem] overflow-hidden mb-6 border-4 border-blue-900/20">
+                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl"></div>
+                 </div>
+                 {/* Mocking the QR read for testing */}
+                 <button onClick={handleQrSuccess} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3">Simulate QR Read</button>
+               </div>
+             )}
+
+             {scannerState === "selfie" && (
+               <div className="animate-in slide-in-from-right">
+                 <h3 className="text-2xl font-black uppercase text-gray-900 italic mb-2">Step 2: Face ID</h3>
+                 <p className="text-xs font-bold text-gray-500 mb-6">Center your face to verify identity.</p>
+                 <div className="relative aspect-square bg-black rounded-[2rem] overflow-hidden mb-6">
+                    <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} />
+                    <button onClick={() => {
+                      const newMode = facingMode === "user" ? "environment" : "user";
+                      setFacingMode(newMode); startStream(newMode);
+                    }} className="absolute top-4 left-4 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/80">
+                      <FontAwesomeIcon icon={faSyncAlt} />
+                    </button>
+                 </div>
+                 <button onClick={captureSelfieAndSend} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3 flex items-center justify-center gap-2">
+                   <FontAwesomeIcon icon={faCamera} /> Verify Identity
+                 </button>
+               </div>
+             )}
+
+             {scannerState === "processing" && (
+               <div className="py-20 flex flex-col items-center">
+                 <FontAwesomeIcon icon={faSpinner} className="animate-spin text-5xl text-blue-900 mb-6" />
+                 <h3 className="text-xl font-black uppercase text-gray-900 italic">Analyzing Biometrics...</h3>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Checking against student database.</p>
+               </div>
+             )}
+
+             {scannerState === "success" && (
+               <div className="py-20 flex flex-col items-center animate-in zoom-in">
+                 <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-inner">
+                   <FontAwesomeIcon icon={faCheck} />
+                 </div>
+                 <h3 className="text-2xl font-black uppercase text-green-700 italic">Verified!</h3>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Attendance logged successfully.</p>
+               </div>
+             )}
+
+             {scannerState !== "processing" && scannerState !== "success" && (
+                <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200">Cancel</button>
+             )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

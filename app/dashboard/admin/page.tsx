@@ -5,11 +5,11 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faUserShield, faCheckCircle, faTimesCircle, faUserPlus, 
   faGraduationCap, faSignOutAlt, faSpinner, faUsersCog,
-  faExclamationTriangle, faBuilding, faBookOpen, faUserEdit, faArrowLeft, faIdCard
+  faExclamationTriangle, faBuilding, faBookOpen, faUserEdit, faArrowLeft, faIdCard, faBan, faLock
 } from "@fortawesome/free-solid-svg-icons";
 
 type AdminTab = "approvals" | "createUser" | "departments" | "subjects" | "academic" | "profile";
-type SubjectAction = "menu" | "createSubject" | "createGroup" | "assignTeacher" | "assignStudent";
+type SubjectAction = "menu" | "createSubject" | "createGroup" | "assignTeacher" | "assignStudent" | "closeSubject" | "closeGroup" | "removeRestrict";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -19,31 +19,33 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: "success" | "error" | "warning", text: string } | null>(null);
 
+  // UPDATED: Added "code" to the dropdown structure to capture college IDs
   const [dropdowns, setDropdowns] = useState({
-    departments: [] as {id: number, name: string}[],
-    subjects: [] as {id: number, name: string}[],
-    teachers: [] as {id: number, name: string}[],
-    students: [] as {id: number, name: string}[]
+    departments: [] as {id: number, name: string, code?: string}[],
+    subjects: [] as {id: number, name: string, code?: string}[],
+    teachers: [] as {id: number, name: string, code?: string}[],
+    students: [] as {id: number, name: string, code?: string}[]
   });
 
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [isPendingLoading, setIsPendingLoading] = useState(false);
 
-  const [formData, setFormData] = useState({
-    fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" 
-  });
+  const [formData, setFormData] = useState({ fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" });
   const [deptForm, setDeptForm] = useState({ name: "" });
 
   const [subjectAction, setSubjectAction] = useState<SubjectAction>("menu");
   const [subjectForm, setSubjectForm] = useState({ code: "", name: "", sectionCount: 1, lectureCount: 1, weeksCount: 14, departmentId: "" });
   const [groupForm, setGroupForm] = useState({ number: 1, year: new Date().getFullYear(), term: "Fall", lectureDay: 0, lecturePeriod: 1, sectionDay: 0, sectionPeriod: 1, subjectId: "", teacherId: "" });
   
-  // UX UPGRADE: ASSIGNMENTS 
   const [assignSubjectId, setAssignSubjectId] = useState(""); 
   const [groupsDropdown, setGroupsDropdown] = useState<{id: number, number: number}[]>([]); 
   const [isGroupsLoading, setIsGroupsLoading] = useState(false);
   const [assignTeacherForm, setAssignTeacherForm] = useState({ groupId: "", teacherId: "" });
   const [assignStudentForm, setAssignStudentForm] = useState({ groupId: "", studentsIds: "" }); 
+
+  const [closeSubjectForm, setCloseSubjectForm] = useState({ subjectId: "", teacherId: "" });
+  const [closeGroupId, setCloseGroupId] = useState("");
+  const [restrictForm, setRestrictForm] = useState({ studentId: "", subjectId: "" });
 
   const [selectedStudent, setSelectedStudent] = useState("");
   const [newGpa, setNewGpa] = useState("");
@@ -58,36 +60,46 @@ export default function AdminDashboard() {
     }
   }, [router]);
 
+  // UPDATED: Now silently extracts and saves the "code" from the backend response
   const fetchDropdown = async (endpoint: string, key: keyof typeof dropdowns, mockData: any[]) => {
     try {
       const res = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/${endpoint}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setDropdowns(prev => ({ ...prev, [key]: data.map((item: any) => ({ id: item.id || item.departmentId || item.subjectId, name: item.name || item.fullName || item.username })) }));
+      setDropdowns(prev => ({ 
+        ...prev, 
+        [key]: data.map((item: any) => ({ 
+          id: item.id || item.departmentId || item.subjectId, 
+          name: item.name || item.fullName || item.username,
+          code: item.code?.toString() || "" 
+        })) 
+      }));
     } catch { setDropdowns(prev => ({ ...prev, [key]: mockData })); }
   };
 
   useEffect(() => {
     if (!authToken) return;
-    if (activeTab === "departments" || activeTab === "createUser") fetchDropdown("Department/GetDropdown", "departments", [{ id: 1, name: "Electrical" }, { id: 2, name: "Mechanical" }]);
+    if (activeTab === "departments" || activeTab === "createUser") fetchDropdown("Department/GetDropdown", "departments", [{ id: 1, name: "Electrical" }]);
     if (activeTab === "subjects") {
       fetchDropdown("Department/GetDropdown", "departments", [{ id: 1, name: "Electrical" }]);
-      fetchDropdown("Subject/GetDropdown", "subjects", [{ id: 1, name: "CS101: Intro to CS" }]);
+      fetchDropdown("Subject/GetSubjects", "subjects", [{ id: 1, name: "CS101: Intro to CS" }]);
       fetchDropdown("Teacher/GetDropdown", "teachers", [{ id: 1, name: "Teacher Ahmed" }]);
     }
-    if (activeTab === "academic") fetchDropdown("Student/GetDropdown", "students", [{ id: 101, name: "Sara Khaled" }]);
+    if (activeTab === "academic" || activeTab === "subjects") {
+      fetchDropdown("Student/GetDropdown", "students", [{ id: 101, name: "Sara Khaled", code: "32021124" }]);
+    }
   }, [activeTab, subjectAction, authToken]);
 
-  // UX UPGRADE: MOCK FETCH GROUPS BY SUBJECT ID
   useEffect(() => {
-    if (assignSubjectId) {
+    if (assignSubjectId && authToken) {
       setIsGroupsLoading(true);
-      setTimeout(() => {
-        setGroupsDropdown([{ id: 1, number: 1 }, { id: 2, number: 2 }]);
-        setIsGroupsLoading(false);
-      }, 500);
+      fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetGroupsBySubjectId/${assignSubjectId}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } })
+      .then(res => { if (!res.ok) throw new Error(); return res.json(); })
+      .then(data => setGroupsDropdown(data.map((g: any) => ({ id: g.id || g.groupId, number: g.number || g.groupNumber }))))
+      .catch(() => setGroupsDropdown([]))
+      .finally(() => setIsGroupsLoading(false));
     } else { setGroupsDropdown([]); }
-  }, [assignSubjectId]);
+  }, [assignSubjectId, authToken]);
 
   useEffect(() => {
     if (activeTab === "approvals" && authToken) {
@@ -141,13 +153,30 @@ export default function AdminDashboard() {
 
   const handleCreateSubject = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/Create", { ...subjectForm, sectionCount: Number(subjectForm.sectionCount), lectureCount: Number(subjectForm.lectureCount), weeksCount: Number(subjectForm.weeksCount), departmentId: Number(subjectForm.departmentId) }, `Subject created!`); };
   const handleCreateGroup = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/CreateGroup", { ...groupForm, number: Number(groupForm.number), year: Number(groupForm.year), lectureDay: Number(groupForm.lectureDay), lecturePeriod: Number(groupForm.lecturePeriod), sectionDay: Number(groupForm.sectionDay), sectionPeriod: Number(groupForm.sectionPeriod), subjectId: Number(groupForm.subjectId), teacherId: Number(groupForm.teacherId) }, `Group created!`); };
-  
   const handleAssignTeacher = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/AssignTeacherToGroup", { groupId: Number(assignTeacherForm.groupId), teacherId: Number(assignTeacherForm.teacherId) }, "Teacher assigned!"); };
+  
+  // UPDATED: Translates entered College Codes back to Internal DB IDs
   const handleAssignStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    const studentIdsArray = assignStudentForm.studentsIds.split(',').map(id => Number(id.trim())).filter(id => !isNaN(id));
-    executeSubjectPost("Subject/AssignStudentsToGroup", { groupId: Number(assignStudentForm.groupId), studentsId: studentIdsArray }, `Students assigned!`);
+    const inputCodes = assignStudentForm.studentsIds.split(',').map(code => code.trim()).filter(code => code !== "");
+    
+    // Find the Internal Server ID for each College Code provided
+    const internalIdsArray = inputCodes.map(code => {
+       const foundStudent = dropdowns.students.find(s => s.code === code || s.id.toString() === code);
+       return foundStudent ? foundStudent.id : null;
+    }).filter(id => id !== null);
+
+    if (internalIdsArray.length === 0) {
+      setActionMessage({ type: "error", text: "Could not find matching students. Ensure the College Codes are correct and exist." });
+      return;
+    }
+
+    executeSubjectPost("Subject/AssignStudentsToGroup", { groupId: Number(assignStudentForm.groupId), studentsId: internalIdsArray }, `Assigned ${internalIdsArray.length} students successfully!`);
   };
+
+  const handleCloseSubject = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/CloseSubject", { subjectId: Number(closeSubjectForm.subjectId), teacherId: Number(closeSubjectForm.teacherId) }, "Subject closed."); };
+  const handleCloseGroup = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/CloseGroup", { groupId: Number(closeGroupId) }, "Group closed."); };
+  const handleRemoveRestrict = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/RemoveRestrict", { studentId: Number(restrictForm.studentId), subjectId: Number(restrictForm.subjectId) }, "Exam restriction lifted for student."); };
 
   const handleUpdateGPA = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
@@ -174,7 +203,6 @@ export default function AdminDashboard() {
           <button onClick={handleLogout} className="md:hidden text-red-500 p-2"><FontAwesomeIcon icon={faSignOutAlt} className="text-xl rtl:rotate-180" /></button>
         </div>
 
-        {/* HORIZONTAL SCROLL ON MOBILE, VERTICAL ON DESKTOP */}
         <nav className="flex flex-row md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-2 md:pb-0 hide-scrollbar">
           <button onClick={() => switchTab("approvals")} className={`shrink-0 flex items-center gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === "approvals" ? "bg-blue-50 text-blue-900 dark:bg-blue-900/30" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}><FontAwesomeIcon icon={faUsersCog} className="text-lg w-5" /> Approvals</button>
           <button onClick={() => switchTab("createUser")} className={`shrink-0 flex items-center gap-3 p-3 md:p-4 rounded-xl md:rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === "createUser" ? "bg-blue-50 text-blue-900 dark:bg-blue-900/30" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}><FontAwesomeIcon icon={faUserPlus} className="text-lg w-5" /> Add User</button>
@@ -216,7 +244,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {activeTab === "createUser" && (
+          {activeTab === "createUser" && ( 
             <div className="bg-white dark:bg-gray-900 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl space-y-6 md:space-y-8">
               <div><h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">Direct User Creation</h2><p className="text-[10px] md:text-xs font-bold text-gray-500 mt-1 md:mt-2">Bypass registration and create an approved account instantly.</p></div>
               <form onSubmit={handleCreateUser} className="space-y-4 md:space-y-6">
@@ -233,7 +261,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {activeTab === "departments" && (
+          {activeTab === "departments" && ( 
             <div className="space-y-6 md:space-y-8">
               <div className="bg-white dark:bg-gray-900 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl space-y-6 md:space-y-8">
                 <div><h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">Create Department</h2><p className="text-[10px] md:text-xs font-bold text-gray-500 mt-1 md:mt-2">Add a new department.</p></div>
@@ -253,43 +281,47 @@ export default function AdminDashboard() {
 
           {activeTab === "subjects" && (
             <div className="bg-white dark:bg-gray-900 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl space-y-6 md:space-y-8">
+              
               <div className="flex items-center gap-3 md:gap-4">
                 {subjectAction !== "menu" && <button onClick={() => setSubjectAction("menu")} className="w-8 h-8 md:w-10 md:h-10 shrink-0 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"><FontAwesomeIcon icon={faArrowLeft} className="text-sm md:text-base" /></button>}
-                <div><h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">{subjectAction === "menu" ? "Subjects & Groups" : subjectAction === "createSubject" ? "New Subject" : subjectAction === "createGroup" ? "New Group" : "Assignment"}</h2><p className="text-[10px] md:text-xs font-bold text-gray-500 mt-1">Manage courses and groups.</p></div>
+                <div>
+                  <h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">
+                    {subjectAction === "menu" ? "Subjects & Groups" : 
+                     subjectAction === "createSubject" ? "New Subject" : subjectAction === "createGroup" ? "New Group" : 
+                     subjectAction === "assignTeacher" ? "Assign Teacher" : subjectAction === "assignStudent" ? "Assign Students" :
+                     subjectAction === "closeSubject" ? "Close Subject" : subjectAction === "closeGroup" ? "Close Group" : "Remove Exam Restriction"}
+                  </h2>
+                  <p className="text-[10px] md:text-xs font-bold text-gray-500 mt-1">Manage courses, groups, and academic administration.</p>
+                </div>
               </div>
 
               {subjectAction === "menu" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 animate-in fade-in zoom-in-95">
-                  <button onClick={() => setSubjectAction("createSubject")} className="p-5 md:p-6 bg-blue-50 text-blue-900 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02] shadow-sm">+ Subject</button>
-                  <button onClick={() => setSubjectAction("createGroup")} className="p-5 md:p-6 bg-blue-50 text-blue-900 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02] shadow-sm">+ Group</button>
-                  <button onClick={() => setSubjectAction("assignTeacher")} className="p-5 md:p-6 bg-gray-50 text-gray-600 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02]">Assign Teacher</button>
-                  <button onClick={() => setSubjectAction("assignStudent")} className="p-5 md:p-6 bg-gray-50 text-gray-600 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02]">Assign Students</button>
+                <div className="space-y-6 animate-in fade-in zoom-in-95">
+                  <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 ms-2">Creation</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                      <button onClick={() => setSubjectAction("createSubject")} className="p-5 md:p-6 bg-blue-50 text-blue-900 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02] shadow-sm">+ Subject</button>
+                      <button onClick={() => setSubjectAction("createGroup")} className="p-5 md:p-6 bg-blue-50 text-blue-900 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02] shadow-sm">+ Group</button>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 ms-2">Assignments</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                      <button onClick={() => setSubjectAction("assignTeacher")} className="p-5 md:p-6 bg-gray-50 text-gray-600 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02]">Assign Teacher to Group</button>
+                      <button onClick={() => setSubjectAction("assignStudent")} className="p-5 md:p-6 bg-gray-50 text-gray-600 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-xs text-left hover:scale-[1.02]">Assign Students to Group</button>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 ms-2">Management & Overrides</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
+                      <button onClick={() => setSubjectAction("closeSubject")} className="p-5 bg-red-50 text-red-700 rounded-2xl font-black uppercase tracking-widest text-[10px] text-left hover:scale-[1.02] border border-red-100"><FontAwesomeIcon icon={faLock} className="mr-2" /> Close Subject</button>
+                      <button onClick={() => setSubjectAction("closeGroup")} className="p-5 bg-red-50 text-red-700 rounded-2xl font-black uppercase tracking-widest text-[10px] text-left hover:scale-[1.02] border border-red-100"><FontAwesomeIcon icon={faLock} className="mr-2" /> Close Group</button>
+                      <button onClick={() => setSubjectAction("removeRestrict")} className="p-5 bg-yellow-50 text-yellow-700 rounded-2xl font-black uppercase tracking-widest text-[10px] text-left hover:scale-[1.02] border border-yellow-200"><FontAwesomeIcon icon={faBan} className="mr-2" /> Remove Restriction</button>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {subjectAction === "assignTeacher" && (
-                <form onSubmit={handleAssignTeacher} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">1. Subject</label><select required value={assignSubjectId} onChange={e => { setAssignSubjectId(e.target.value); setAssignTeacherForm({...assignTeacherForm, groupId: ""}); }} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">2. Group</label><select required disabled={!assignSubjectId || isGroupsLoading} value={assignTeacherForm.groupId} onChange={e => setAssignTeacherForm({...assignTeacherForm, groupId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold disabled:opacity-50"><option value="" disabled>{isGroupsLoading ? "Loading..." : "Select..."}</option>{groupsDropdown.map(g => <option key={g.id} value={g.id}>Group {g.number} (ID: {g.id})</option>)}</select></div>
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">3. Teacher</label><select required value={assignTeacherForm.teacherId} onChange={e => setAssignTeacherForm({...assignTeacherForm, teacherId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-                  </div>
-                  <button type="submit" disabled={isLoading} className="w-full py-4 md:py-5 bg-blue-900 text-white rounded-2xl md:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105">{isLoading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Assign Teacher"}</button>
-                </form>
-              )}
-
-              {subjectAction === "assignStudent" && (
-                <form onSubmit={handleAssignStudent} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">1. Subject</label><select required value={assignSubjectId} onChange={e => { setAssignSubjectId(e.target.value); setAssignStudentForm({...assignStudentForm, groupId: ""}); }} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">2. Group</label><select required disabled={!assignSubjectId || isGroupsLoading} value={assignStudentForm.groupId} onChange={e => setAssignStudentForm({...assignStudentForm, groupId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold disabled:opacity-50"><option value="" disabled>{isGroupsLoading ? "Loading..." : "Select..."}</option>{groupsDropdown.map(g => <option key={g.id} value={g.id}>Group {g.number} (ID: {g.id})</option>)}</select></div>
-                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">3. Student IDs</label><input required type="text" value={assignStudentForm.studentsIds} onChange={e => setAssignStudentForm({...assignStudentForm, studentsIds: e.target.value})} placeholder="e.g. 1, 2" className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold" /></div>
-                  </div>
-                  <button type="submit" disabled={isLoading} className="w-full py-4 md:py-5 bg-blue-900 text-white rounded-2xl md:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105">{isLoading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Assign Students"}</button>
-                </form>
-              )}
-
-              {/* ... (Create Subject and Create Group forms remain unchanged from previous, just using standard inputs) ... */}
               {subjectAction === "createSubject" && (
                 <form onSubmit={handleCreateSubject} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
@@ -312,21 +344,85 @@ export default function AdminDashboard() {
                   <button type="submit" disabled={isLoading} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase shadow-xl">Save Group</button>
                  </form>
               )}
+
+              {subjectAction === "assignTeacher" && (
+                <form onSubmit={handleAssignTeacher} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">1. Subject</label><select required value={assignSubjectId} onChange={e => { setAssignSubjectId(e.target.value); setAssignTeacherForm({...assignTeacherForm, groupId: ""}); }} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">2. Group</label><select required disabled={!assignSubjectId || isGroupsLoading} value={assignTeacherForm.groupId} onChange={e => setAssignTeacherForm({...assignTeacherForm, groupId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold disabled:opacity-50"><option value="" disabled>{isGroupsLoading ? "Loading..." : "Select..."}</option>{groupsDropdown.map(g => <option key={g.id} value={g.id}>Group {g.number} (ID: {g.id})</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">3. Teacher</label><select required value={assignTeacherForm.teacherId} onChange={e => setAssignTeacherForm({...assignTeacherForm, teacherId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+                  </div>
+                  <button type="submit" disabled={isLoading} className="w-full py-4 md:py-5 bg-blue-900 text-white rounded-2xl md:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105">{isLoading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Assign Teacher"}</button>
+                </form>
+              )}
+
+              {/* UPDATED: Assign Students Form now asks for College Codes */}
+              {subjectAction === "assignStudent" && (
+                <form onSubmit={handleAssignStudent} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">1. Subject</label><select required value={assignSubjectId} onChange={e => { setAssignSubjectId(e.target.value); setAssignStudentForm({...assignStudentForm, groupId: ""}); }} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">2. Group</label><select required disabled={!assignSubjectId || isGroupsLoading} value={assignStudentForm.groupId} onChange={e => setAssignStudentForm({...assignStudentForm, groupId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold disabled:opacity-50"><option value="" disabled>{isGroupsLoading ? "Loading..." : "Select..."}</option>{groupsDropdown.map(g => <option key={g.id} value={g.id}>Group {g.number} (ID: {g.id})</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">3. College Codes (Comma Separated)</label><input required type="text" value={assignStudentForm.studentsIds} onChange={e => setAssignStudentForm({...assignStudentForm, studentsIds: e.target.value})} placeholder="e.g. 32021147, 32021124" className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold" /></div>
+                  </div>
+                  <button type="submit" disabled={isLoading} className="w-full py-4 md:py-5 bg-blue-900 text-white rounded-2xl md:rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105">{isLoading ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Assign Students"}</button>
+                </form>
+              )}
+
+              {subjectAction === "closeSubject" && (
+                <form onSubmit={handleCloseSubject} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4 border-2 border-red-100 rounded-3xl p-6">
+                  <p className="text-xs text-red-600 font-bold mb-4"><FontAwesomeIcon icon={faExclamationTriangle} className="mr-2"/> Warning: This action closes the subject for the assigned teacher.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Subject</label><select required value={closeSubjectForm.subjectId} onChange={e => setCloseSubjectForm({...closeSubjectForm, subjectId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Teacher</label><select required value={closeSubjectForm.teacherId} onChange={e => setCloseSubjectForm({...closeSubjectForm, teacherId: e.target.value})} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+                  </div>
+                  <button type="submit" disabled={isLoading} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:scale-105">Execute Close</button>
+                </form>
+              )}
+
+              {subjectAction === "closeGroup" && (
+                <form onSubmit={handleCloseGroup} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4 border-2 border-red-100 rounded-3xl p-6">
+                   <p className="text-xs text-red-600 font-bold mb-4"><FontAwesomeIcon icon={faExclamationTriangle} className="mr-2"/> Warning: This action closes the specific group.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">1. Filter by Subject</label><select required value={assignSubjectId} onChange={e => { setAssignSubjectId(e.target.value); setCloseGroupId(""); }} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-gray-400">2. Select Group to Close</label><select required disabled={!assignSubjectId || isGroupsLoading} value={closeGroupId} onChange={e => setCloseGroupId(e.target.value)} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold disabled:opacity-50"><option value="" disabled>{isGroupsLoading ? "Loading..." : "Select..."}</option>{groupsDropdown.map(g => <option key={g.id} value={g.id}>Group {g.number} (ID: {g.id})</option>)}</select></div>
+                  </div>
+                  <button type="submit" disabled={isLoading} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:scale-105">Execute Close</button>
+                </form>
+              )}
+
+              {/* UPDATED: Remove Restrict Form now displays the College Code */}
+              {subjectAction === "removeRestrict" && (
+                <form onSubmit={handleRemoveRestrict} className="space-y-4 md:space-y-6 animate-in slide-in-from-right-4 bg-yellow-50/50 border-2 border-yellow-200 rounded-3xl p-6">
+                  <div className="flex items-start gap-4 mb-4">
+                     <FontAwesomeIcon icon={faBan} className="text-yellow-600 text-2xl mt-1" />
+                     <div>
+                       <h3 className="text-yellow-800 font-black uppercase text-sm">HTI Exam Restriction Protocol</h3>
+                       <p className="text-xs text-yellow-700 font-bold mt-1">If a student misses 4 lectures in a term, they are restricted from the final exam. Use this tool to manually lift that ban.</p>
+                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-yellow-700">Restricted Student</label><select required value={restrictForm.studentId} onChange={e => setRestrictForm({...restrictForm, studentId: e.target.value})} className="w-full p-3 md:p-4 bg-white rounded-xl md:rounded-2xl text-xs md:text-sm font-bold border border-yellow-200"><option value="" disabled>Select Student...</option>{dropdowns.students.map(s => <option key={s.id} value={s.id}>{s.name} (Code: {s.code || "N/A"})</option>)}</select></div>
+                    <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase tracking-widest text-yellow-700">Subject</label><select required value={restrictForm.subjectId} onChange={e => setRestrictForm({...restrictForm, subjectId: e.target.value})} className="w-full p-3 md:p-4 bg-white rounded-xl md:rounded-2xl text-xs md:text-sm font-bold border border-yellow-200"><option value="" disabled>Select Subject...</option>{dropdowns.subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                  </div>
+                  <button type="submit" disabled={isLoading} className="w-full py-4 bg-yellow-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl hover:scale-105">Lift Exam Restriction</button>
+                </form>
+              )}
             </div>
           )}
 
-          {activeTab === "academic" && (
+          {/* UPDATED: Academic Update Form now displays the College Code */}
+          {activeTab === "academic" && ( 
             <div className="bg-white dark:bg-gray-900 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl space-y-6 md:space-y-8">
               <div><h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">Update GPA</h2></div>
               <form onSubmit={handleUpdateGPA} className="space-y-4 md:space-y-6">
-                <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase text-gray-400">Student</label><select required value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.students.map((s) => (<option key={s.id} value={s.id}>{s.name} (ID: {s.id})</option>))}</select></div>
+                <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase text-gray-400">Student</label><select required value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold"><option value="" disabled>Select...</option>{dropdowns.students.map((s) => (<option key={s.id} value={s.id}>{s.name} (Code: {s.code || "N/A"})</option>))}</select></div>
                 <div className="space-y-1 md:space-y-2"><label className="text-[10px] font-black uppercase text-gray-400">GPA (0-4)</label><input required type="number" step="0.01" min="0" max="4" value={newGpa} onChange={(e) => setNewGpa(e.target.value)} className="w-full p-3 md:p-4 bg-gray-50 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold" /></div>
                 <button type="submit" disabled={isLoading || !selectedStudent} className="w-full py-4 md:py-5 bg-blue-900 text-white rounded-2xl md:rounded-[2rem] font-black uppercase shadow-xl disabled:opacity-50">Update Record</button>
               </form>
             </div>
           )}
 
-          {activeTab === "profile" && (
+          {activeTab === "profile" && ( 
             <div className="bg-white dark:bg-gray-900 p-6 md:p-10 rounded-[2rem] md:rounded-[3rem] border border-gray-100 dark:border-gray-800 shadow-xl space-y-6 md:space-y-8">
                <div><h2 className="text-xl md:text-2xl font-black uppercase italic text-gray-900 dark:text-white">My Profile</h2></div>
                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 p-6 md:p-8 bg-blue-50 dark:bg-blue-900/20 rounded-2xl md:rounded-3xl border border-blue-100 text-center sm:text-left">

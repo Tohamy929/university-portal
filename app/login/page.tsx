@@ -73,7 +73,8 @@ export default function LoginPage() {
       
       localStorage.setItem("userEmail", userInfo.email || username); 
       localStorage.setItem("userRole", userRole);
-      
+      const realId = userInfo.id || userInfo.studentId || userInfo.userId || "";
+      localStorage.setItem("userId", realId.toString());
       // 3. DYNAMIC ROUTING
       if (userRole === "admin" || userRole === "administrator") {
         router.push("/dashboard/admin");
