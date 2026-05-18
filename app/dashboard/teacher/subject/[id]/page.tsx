@@ -31,7 +31,7 @@ export default function TeacherSubjectHome() {
     setAuthToken(token);
     setIsLoading(true);
 
-    fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetDetailsForTeacherById/${id}`, {
+    fetch(`/api-proxy/Subject/GetDetailsForTeacherById/${id}`, {
       headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
     })
     .then(async (res) => {

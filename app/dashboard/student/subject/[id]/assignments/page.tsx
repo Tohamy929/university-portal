@@ -31,9 +31,9 @@ export default function StudentAssignments() {
   const fetchAssignments = async (token: string) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Assignment/GetBySubjectId/${id}`, {
-        headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-      });
+      const response = await fetch(`/api-proxy/Assignment/GetBySubjectId/${id}`, {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+});
       const text = await response.text();
       if (!response.ok) throw new Error(text);
       if (text && text.length > 2) {

@@ -63,7 +63,7 @@ export default function AdminDashboard() {
   // UPDATED: Now silently extracts and saves the "code" from the backend response
   const fetchDropdown = async (endpoint: string, key: keyof typeof dropdowns, mockData: any[]) => {
     try {
-      const res = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/${endpoint}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } });
+      const res = await fetch(`/api-proxy/${endpoint}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setDropdowns(prev => ({ 
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (assignSubjectId && authToken) {
       setIsGroupsLoading(true);
-      fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetGroupsBySubjectId/${assignSubjectId}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } })
+      fetch(`/api-proxy/Subject/GetGroupsBySubjectId/${assignSubjectId}`, { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } })
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(data => setGroupsDropdown(data.map((g: any) => ({ id: g.id || g.groupId, number: g.number || g.groupNumber }))))
       .catch(() => setGroupsDropdown([]))
@@ -104,7 +104,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (activeTab === "approvals" && authToken) {
       setIsPendingLoading(true);
-      fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetNotApprovedUsers", { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } })
+      fetch("/api-proxy/Auth/GetNotApprovedUsers", { headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` } })
         .then(res => res.ok ? res.json() : []).then(data => setPendingUsers(data)).catch(() => setPendingUsers([]))
         .finally(() => setIsPendingLoading(false));
     }
@@ -113,7 +113,7 @@ export default function AdminDashboard() {
   const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/ApproveUser", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ username }) });
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ username }) });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `User ${username} approved!` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
@@ -124,7 +124,7 @@ export default function AdminDashboard() {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
       const payload = { ...formData, departmentId: parseInt(formData.departmentId) || 0, name: formData.fullName.split(' ')[0] };
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/CreateStudentOrTeacher", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
+      const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `User created successfully!` });
       setFormData({ fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" });
@@ -134,7 +134,7 @@ export default function AdminDashboard() {
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Department/Create", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ name: deptForm.name }) });
+      const response = await fetch("/api-proxy/Department/Create", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ name: deptForm.name }) });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `Department ${deptForm.name} created!` });
       setDeptForm({ name: "" }); fetchDropdown("Department/GetDropdown", "departments", []); 
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
   const executeSubjectPost = async (endpoint: string, payload: any, successMsg: string) => {
     setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
+      const response = await fetch(`/api-proxy/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: successMsg });
       setSubjectAction("menu");
@@ -181,7 +181,7 @@ export default function AdminDashboard() {
   const handleUpdateGPA = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Student/UpdateGPA", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify([{ studentId: parseInt(selectedStudent), gpa: parseFloat(newGpa) }]) });
+      const response = await fetch("/api-proxy/Student/UpdateGPA", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify([{ studentId: parseInt(selectedStudent), gpa: parseFloat(newGpa) }]) });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: "GPA updated!" }); setNewGpa("");
     } catch (error: any) { setActionMessage({ type: "error", text: error.message }); } finally { setIsLoading(false); }

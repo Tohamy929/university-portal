@@ -39,13 +39,13 @@ export default function TeacherMaterials() {
     setIsLoading(true);
     try {
       // 1. Fetch Types
-      const typeRes = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Subject/GetSubjectMaterialType", { 
-        headers: { "Authorization": `Bearer ${token}` } 
-      });
+      const typeRes = await fetch("/api-proxy/Subject/GetSubjectMaterialType", { 
+  headers: { "Authorization": `Bearer ${token}` } 
+});
       if (typeRes.ok) setMaterialTypes(await typeRes.json());
 
       // 2. Fetch Existing Materials
-      const matRes = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetMaterialsById/${id}`, { 
+      const matRes = await fetch(`/api-proxy/Subject/GetMaterialsById/${id}`, { 
         headers: { "Authorization": `Bearer ${token}` } 
       });
       
@@ -102,7 +102,7 @@ export default function TeacherMaterials() {
         formData.append("Deadline", nextWeek.toISOString().split('T')[0]); 
       }
 
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Subject/UploadMaterial", {
+      const response = await fetch("/api-proxy/Subject/UploadMaterial", {
         method: "POST",
         headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` },
         body: formData 
@@ -125,7 +125,7 @@ export default function TeacherMaterials() {
   const deleteFile = async (materialId: number) => {
     if (!confirm("Are you sure you want to delete this material?")) return;
     try {
-      const response = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/DeleteMaterial/${materialId}`, {
+      const response = await fetch(`/api-proxy/Subject/DeleteMaterial/${materialId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${authToken}` }
       });

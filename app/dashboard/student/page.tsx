@@ -39,9 +39,9 @@ export default function StudentDashboard() {
     setAuthToken(token);
     
     // FETCH LIVE USER INFO
-    fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetUserInfo", {
-      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-    })
+   fetch("/api-proxy/Auth/GetUserInfo", {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+})
     .then(async (res) => {
       const text = await res.text();
       if (!res.ok) throw new Error(text);
@@ -79,7 +79,9 @@ export default function StudentDashboard() {
   // --- LOGOUT LOGIC ---
   const handleLogout = async () => {
     try {
-      await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/LogOff", { headers: { "Authorization": `Bearer ${authToken}` } });
+      await fetch("/api-proxy/Auth/LogOff", { 
+  headers: { "Authorization": `Bearer ${authToken}` } 
+});
     } catch (e) {
       console.warn("Logout ping failed, forcing local clear.");
     } finally {
@@ -98,9 +100,11 @@ export default function StudentDashboard() {
       const formData = new FormData();
       formData.append("File", file);
 
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/UploadUserImage", {
-        method: "POST", headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: formData 
-      });
+      const response = await fetch("/api-proxy/Auth/UploadUserImage", {
+  method: "POST", 
+  headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+  body: formData 
+});
 
       const text = await response.text();
       if (!response.ok) throw new Error(`Upload Failed: ${text}`);
@@ -123,9 +127,11 @@ export default function StudentDashboard() {
 
     setIsUpdating(true); setActionMessage(null);
     try {
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/ChangePassword", {
-        method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(passwordForm)
-      });
+      const response = await fetch("/api-proxy/Auth/ChangePassword", {
+  method: "POST", 
+  headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+  body: JSON.stringify(passwordForm)
+});
 
       const text = await response.text();
       if (!response.ok) {

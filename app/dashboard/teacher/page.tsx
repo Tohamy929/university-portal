@@ -38,9 +38,9 @@ export default function TeacherLobby() {
     }
     setAuthToken(token);
 
-    fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetUserInfo", {
-      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-    })
+    fetch("/api-proxy/Auth/GetUserInfo", {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+})
     .then(async (res) => {
       const textResponse = await res.text();
       if (!res.ok) throw new Error(`Failed to load profile: ${textResponse}`);
@@ -82,9 +82,9 @@ export default function TeacherLobby() {
     setScores({});
     
     try {
-      const res = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Assignment/GetPendingById/${assignmentId}`, {
-        headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }
-      });
+      const res = await fetch(`/api-proxy/Assignment/GetPendingById/${assignmentId}`, {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }
+});
       
       const textResponse = await res.text();
       if (!res.ok) throw new Error(textResponse);
@@ -111,9 +111,11 @@ export default function TeacherLobby() {
     try {
       const payload = Object.keys(scores).map(id => ({ studentAssignmentId: Number(id), score: Number(scores[Number(id)]) })).filter(sub => sub.score >= 0); 
       if (payload.length === 0) throw new Error("Please enter at least one score before submitting.");
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Assignment/Review", {
-        method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload)
-      });
+      const response = await fetch("/api-proxy/Assignment/Review", {
+  method: "POST", 
+  headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+  body: JSON.stringify(payload)
+});
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `Successfully submitted ${payload.length} grades!` });
       setGradingAssignmentId(null); 
@@ -130,7 +132,7 @@ export default function TeacherLobby() {
       const formData = new FormData();
       formData.append("File", file); // Swagger requires key "File"
 
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/UploadUserImage", {
+      const response = await fetch("/api-proxy/Auth/UploadUserImage", {
         method: "POST",
         headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` },
         // Notice: We do NOT set "Content-Type". The browser sets it automatically with the multipart boundary!
@@ -158,7 +160,7 @@ export default function TeacherLobby() {
 
     setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/ChangePassword", {
+      const response = await fetch("/api-proxy/Auth/ChangePassword", {
         method: "POST",
         headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` },
         body: JSON.stringify(passwordForm)

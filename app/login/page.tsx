@@ -20,11 +20,11 @@ export default function LoginPage() {
 
     try {
       // 1. CALL LOGIN API
-      const loginResponse = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/Login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "accept": "*/*" },
-        body: JSON.stringify({ username, password })
-      });
+      const loginResponse = await fetch("/api-proxy/Auth/Login", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", "accept": "*/*" },
+  body: JSON.stringify({ username, password })
+});
 
       if (!loginResponse.ok) {
         const errorText = await loginResponse.text(); 
@@ -53,7 +53,7 @@ export default function LoginPage() {
       localStorage.setItem("authToken", token);
 
       // 2. GET USER INFO
-      const userInfoResponse = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/GetUserInfo", {
+      const userInfoResponse = await fetch("/api-proxy/Auth/GetUserInfo", {
         method: "GET",
         headers: { 
           "Authorization": `Bearer ${token}`,
@@ -118,15 +118,15 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleLogin}  autoComplete="off" className="space-y-6">
           <div className="space-y-2">
             <label className="ms-2 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Username</label>
-            <input type="text" required value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
+            <input type="text" required value={username} autoComplete="new-password"  onChange={(e) => setUsername(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
           </div>
 
           <div className="space-y-2">
             <label className="ms-2 text-[10px] font-black uppercase tracking-widest text-gray-400 dark:text-gray-500">Password</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
+            <input type="password" required value={password} autoComplete="new-password" onChange={(e) => setPassword(e.target.value)} className="w-full p-5 bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-blue-900 dark:focus:border-blue-500 rounded-2xl text-sm font-bold outline-none text-gray-900 dark:text-white transition-all" />
           </div>
 
           <button type="submit" disabled={isLoading} className="w-full py-5 mt-4 bg-blue-900 dark:bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:hover:scale-100 flex justify-center items-center gap-3">

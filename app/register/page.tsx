@@ -43,7 +43,7 @@ export default function RegisterPage() {
         role: roleDbMapping[role] 
       };
 
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Auth/Register", {
+      const response = await fetch("/api-proxy/Auth/Register", {
         method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*" },
         body: JSON.stringify(payload)
       });

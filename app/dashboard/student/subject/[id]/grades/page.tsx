@@ -19,8 +19,8 @@ export default function StudentGrades() {
     if (!token) { router.push("/login"); return; }
     
     Promise.all([
-      fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetStudentGradesForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
-      fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetDetailsForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null)
+     fetch(`/api-proxy/Subject/GetStudentGradesForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
+      fetch(`/api-proxy/Subject/GetDetailsForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null)
     ])
     .then(([gradesData, detailsData]) => {
       setGrades(gradesData);

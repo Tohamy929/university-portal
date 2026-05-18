@@ -28,9 +28,9 @@ export default function StudentAttendanceLog() {
     
     if (!token || !studentId) { router.push("/login"); return; }
 
-    fetch(`http://smartattend456-001-site1.qtempurl.com/api/Attendance/GetAttendancesBySubjectAndStudent/${id}/${studentId}`, {
-      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-    })
+    fetch(`/api-proxy/Attendance/GetAttendancesBySubjectAndStudent/${id}/${studentId}`, {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+})
     .then(async (res) => {
       const text = await res.text();
       if (!res.ok) throw new Error(text);

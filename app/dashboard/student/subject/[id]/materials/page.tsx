@@ -21,9 +21,9 @@ export default function StudentMaterials() {
     const token = localStorage.getItem("authToken");
     if (!token) { router.push("/login"); return; }
     
-    fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetDetailsForStudentById/${id}`, {
-      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-    })
+   fetch(`/api-proxy/Subject/GetDetailsForStudentById/${id}`, {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+})
     .then(async (res) => {
       const text = await res.text();
       if (!res.ok) throw new Error(text);

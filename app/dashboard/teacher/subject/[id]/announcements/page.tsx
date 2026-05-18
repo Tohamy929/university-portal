@@ -41,9 +41,9 @@ export default function TeacherAnnouncements() {
   const fetchAnnouncements = async (token: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Notification/GetBySubjectId/${id}`, {
-        headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-      });
+      const res = await fetch(`/api-proxy/Notification/GetBySubjectId/${id}`, {
+  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+});
       const text = await res.text();
       if (!res.ok) throw new Error(text);
       
@@ -78,7 +78,7 @@ export default function TeacherAnnouncements() {
       formData.append("SubjectId", id as string);
       if (attachedFile) formData.append("Files", attachedFile);
 
-      const response = await fetch("http://smartattend456-001-site1.qtempurl.com/api/Notification/Create", {
+      const response = await fetch("/api-proxy/Notification/Create", {
         method: "POST",
         headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` },
         body: formData 
@@ -115,7 +115,7 @@ export default function TeacherAnnouncements() {
   const deleteAnnouncement = async (annId: number) => {
     if (!confirm("Delete this broadcast from the student feed?")) return;
     try {
-      const response = await fetch(`http://smartattend456-001-site1.qtempurl.com/api/Notification/Delete/${annId}`, {
+      const response = await fetch(`/api-proxy/Notification/Delete/${annId}`, {
         method: "DELETE",
         headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }
       });
