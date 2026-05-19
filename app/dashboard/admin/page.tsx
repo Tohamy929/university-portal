@@ -110,21 +110,31 @@ export default function AdminDashboard() {
     }
   }, [activeTab, authToken]);
 
-  const handleApprove = async (username: string) => {
+ const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Auth/ApproveUser", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ username }) });
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
+        method: "POST", 
+        cache: "no-store", // <--- ADDS CACHE BYPASS
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify({ username }) 
+      });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `User ${username} approved!` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
     } catch (error: any) { setActionMessage({ type: "error", text: error.message }); }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+ const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
       const payload = { ...formData, departmentId: parseInt(formData.departmentId) || 0, name: formData.fullName.split(' ')[0] };
-      const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
+      const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { 
+        method: "POST", 
+        cache: "no-store", // <--- ADDS CACHE BYPASS
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify(payload) 
+      });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `User created successfully!` });
       setFormData({ fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" });
@@ -134,17 +144,27 @@ export default function AdminDashboard() {
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Department/Create", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify({ name: deptForm.name }) });
+      const response = await fetch("/api-proxy/Department/Create", { 
+        method: "POST", 
+        cache: "no-store", // <--- ADDS CACHE BYPASS
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify({ name: deptForm.name }) 
+      });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: `Department ${deptForm.name} created!` });
       setDeptForm({ name: "" }); fetchDropdown("Department/GetDropdown", "departments", []); 
     } catch (error: any) { setActionMessage({ type: "error", text: error.message }); } finally { setIsLoading(false); }
   };
 
-  const executeSubjectPost = async (endpoint: string, payload: any, successMsg: string) => {
+ const executeSubjectPost = async (endpoint: string, payload: any, successMsg: string) => {
     setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch(`/api-proxy/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify(payload) });
+      const response = await fetch(`/api-proxy/${endpoint}`, { 
+        method: "POST", 
+        cache: "no-store", // <--- ADDS CACHE BYPASS
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify(payload) 
+      });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: successMsg });
       setSubjectAction("menu");
@@ -178,15 +198,19 @@ export default function AdminDashboard() {
   const handleCloseGroup = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/CloseGroup", { groupId: Number(closeGroupId) }, "Group closed."); };
   const handleRemoveRestrict = (e: React.FormEvent) => { e.preventDefault(); executeSubjectPost("Subject/RemoveRestrict", { studentId: Number(restrictForm.studentId), subjectId: Number(restrictForm.subjectId) }, "Exam restriction lifted for student."); };
 
-  const handleUpdateGPA = async (e: React.FormEvent) => {
+ const handleUpdateGPA = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Student/UpdateGPA", { method: "POST", headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, body: JSON.stringify([{ studentId: parseInt(selectedStudent), gpa: parseFloat(newGpa) }]) });
+      const response = await fetch("/api-proxy/Student/UpdateGPA", { 
+        method: "POST", 
+        cache: "no-store", // <--- ADDS CACHE BYPASS
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify([{ studentId: parseInt(selectedStudent), gpa: parseFloat(newGpa) }]) 
+      });
       if (!response.ok) throw new Error(await response.text());
       setActionMessage({ type: "success", text: "GPA updated!" }); setNewGpa("");
     } catch (error: any) { setActionMessage({ type: "error", text: error.message }); } finally { setIsLoading(false); }
   };
-
   const switchTab = (tab: AdminTab) => { setActiveTab(tab); setActionMessage(null); setSubjectAction("menu"); };
   const handleLogout = () => { localStorage.clear(); router.push("/login"); };
 
