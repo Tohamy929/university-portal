@@ -269,13 +269,38 @@ export default function AttendancePage() {
     startStream(activeEl, newMode, false);
   };
 
-  const submitAttendance = async () => {
+ const submitAttendance = async () => {
     setIsSubmitting(true);
+    
+    // 1. Sync to the Python Biometric Server
     await syncToDevice(studentsRef.current);
     
-    // Note: If you need to actually POST these to the database upon completion, 
-    // you would map `studentsRef.current` back into a payload and fetch POST here.
+    // 2. Format the session record for the Ledger
+    const sessionRecord = {
+      id: Date.now().toString(), 
+      subjectId: String(params.id),
+      week: setup.week, 
+      group: setup.group, 
+      type: setup.type,
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      presentCount: studentsRef.current.filter(s => s.present).length,
+      total: studentsRef.current.length,
+      roster: studentsRef.current.map(s => ({ 
+        id: s.id, 
+        name: s.name, 
+        code: s.code, // Make sure we save the College Code for the Ledger!
+        status: s.present ? 'present' : 'absent' 
+      }))
+    };
+
+    // 3. Save to LocalStorage so the Ledger page can render it
+    const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
+    localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
     
+    // Note: When your backend developer finishes the "Submit Attendance" API, 
+    // you will add a `fetch("/api-proxy/Attendance/Submit", { method: "POST", ... })` right here!
+
+    // 4. Redirect to the Ledger
     router.push(`/dashboard/teacher/subject/${params.id}/attendance/manage`);
   };
 
