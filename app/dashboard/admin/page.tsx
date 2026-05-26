@@ -121,7 +121,7 @@ const handleApprove = async (username: string) => {
           "accept": "*/*", 
           "Authorization": `Bearer ${authToken}` 
         },
-        body: JSON.stringify({}) // Send an empty body so the JSON parser doesn't choke
+       body: JSON.stringify(username) // Send an empty body so the JSON parser doesn't choke
       });
 
       // 1. Read the stream exactly once
