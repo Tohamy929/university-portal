@@ -113,16 +113,15 @@ export default function AdminDashboard() {
 const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
+      // THE FIX: Append the username directly to the URL as a query parameter
+      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}`, { 
         method: "POST", 
-        cache: "no-store", // ADDS CACHE BYPASS
+        cache: "no-store", 
         headers: { 
-          "Content-Type": "application/json", 
           "accept": "*/*", 
           "Authorization": `Bearer ${authToken}` 
-        }, 
-        // THE FIX: Explicitly capitalize the 'U' for ASP.NET
-        body: JSON.stringify({ Username: username }) 
+        }
+        // Notice we completely removed the 'body: JSON.stringify(...)' line!
       });
 
       // 1. Read the stream exactly once
@@ -133,7 +132,6 @@ const handleApprove = async (username: string) => {
         let cleanError = text;
         try {
           const errObj = JSON.parse(text);
-          // Extract specific validation errors if ASP.NET sends them
           if (errObj.errors) {
             cleanError = Object.values(errObj.errors).flat().join(" | ");
           } else if (errObj.title) {
@@ -151,7 +149,6 @@ const handleApprove = async (username: string) => {
       setActionMessage({ type: "error", text: error.message }); 
     }
   };
-
  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
