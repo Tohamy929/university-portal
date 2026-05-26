@@ -110,19 +110,46 @@ export default function AdminDashboard() {
     }
   }, [activeTab, authToken]);
 
- const handleApprove = async (username: string) => {
+const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
       const response = await fetch("/api-proxy/Auth/ApproveUser", { 
         method: "POST", 
-        cache: "no-store", // <--- ADDS CACHE BYPASS
-        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-        body: JSON.stringify({ username }) 
+        cache: "no-store", // ADDS CACHE BYPASS
+        headers: { 
+          "Content-Type": "application/json", 
+          "accept": "*/*", 
+          "Authorization": `Bearer ${authToken}` 
+        }, 
+        // THE FIX: Explicitly capitalize the 'U' for ASP.NET
+        body: JSON.stringify({ Username: username }) 
       });
-      if (!response.ok) throw new Error(await response.text());
+
+      // 1. Read the stream exactly once
+      const text = await response.text();
+
+      // 2. Safely parse the backend failure
+      if (!response.ok) {
+        let cleanError = text;
+        try {
+          const errObj = JSON.parse(text);
+          // Extract specific validation errors if ASP.NET sends them
+          if (errObj.errors) {
+            cleanError = Object.values(errObj.errors).flat().join(" | ");
+          } else if (errObj.title) {
+            cleanError = errObj.title;
+          }
+        } catch { /* If it's not JSON, stick to the raw text */ }
+        throw new Error(cleanError || "Failed to approve user.");
+      }
+
+      // 3. Success state
       setActionMessage({ type: "success", text: `User ${username} approved!` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
-    } catch (error: any) { setActionMessage({ type: "error", text: error.message }); }
+      
+    } catch (error: any) { 
+      setActionMessage({ type: "error", text: error.message }); 
+    }
   };
 
  const handleCreateUser = async (e: React.FormEvent) => {
