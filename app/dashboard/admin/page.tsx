@@ -113,15 +113,15 @@ export default function AdminDashboard() {
 const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      // THE FIX: Append the username directly to the URL as a query parameter
       const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}`, { 
         method: "POST", 
         cache: "no-store", 
         headers: { 
+          "Content-Type": "application/json", // <-- WE PUT THIS BACK!
           "accept": "*/*", 
           "Authorization": `Bearer ${authToken}` 
-        }
-        // Notice we completely removed the 'body: JSON.stringify(...)' line!
+        },
+        body: JSON.stringify({}) // Send an empty body so the JSON parser doesn't choke
       });
 
       // 1. Read the stream exactly once
@@ -137,7 +137,7 @@ const handleApprove = async (username: string) => {
           } else if (errObj.title) {
             cleanError = errObj.title;
           }
-        } catch { /* If it's not JSON, stick to the raw text */ }
+        } catch { /* Not JSON */ }
         throw new Error(cleanError || "Failed to approve user.");
       }
 
