@@ -89,14 +89,27 @@ export default function AttendancePage() {
   };
 
   // --- INITIALIZE SESSION FROM DB ---
+  // --- INITIALIZE SESSION FROM DB ---
   const startSession = async () => {
     setIsSetupLoading(true);
     try {
       const token = localStorage.getItem("authToken");
-      // Connects directly to the new API endpoint
-      const response = await fetch(`/api-proxy/Attendance/GetByWeekAndGroupAndType/${setup.week}/${setup.group}/${setup.type}`, {
-        headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-      });
+      
+      // 1. Safe Cache-Busting Headers
+      const fetchOptions = {
+        cache: "no-store" as RequestCache, 
+        headers: { 
+          "accept": "*/*", 
+          "Authorization": `Bearer ${token}`,
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache"
+        }
+      };
+
+      // 2. Fetch the roster
+      // NOTE: When your backend developer updates the API to include the Subject ID, 
+      // you will need to update this URL to pass `params.id`!
+      const response = await fetch(`/api-proxy/Attendance/GetByWeekAndGroupAndType/${setup.week}/${setup.group}/${setup.type}`, fetchOptions);
       
       if (!response.ok) throw new Error(await response.text());
       const data = await response.json();
@@ -112,13 +125,12 @@ export default function AttendancePage() {
       setStudents(mappedStudents);
       setIsStarted(true);
     } catch (error) {
-      console.error(error);
+      console.error("Session Setup Error:", error);
       alert("Failed to load the student roster from the database.");
     } finally {
       setIsSetupLoading(false);
     }
   };
-
   // --- QR ROTATION LOGIC ---
   useEffect(() => {
     let interval: NodeJS.Timeout;

@@ -46,20 +46,27 @@ export default function StudentAttendanceLog() {
   }, [id, router]);
 
   const fetchLog = (token: string, studentId: string) => {
-    fetch(`/api-proxy/Attendance/GetAttendancesBySubjectAndStudent/${id}/${studentId}`, {
-      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-    })
+    // 1. Force Vercel to bypass its cache entirely
+    const fetchOptions = {
+      cache: "no-store" as RequestCache,
+      headers: { 
+        "accept": "*/*", 
+        "Authorization": `Bearer ${token}`,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache"
+      }
+    };
+
+    fetch(`/api-proxy/Attendance/GetAttendancesBySubjectAndStudent/${id}/${studentId}`, fetchOptions)
     .then(async (res) => {
-      const text = await res.text();
-      if (!res.ok) throw new Error(text);
-      if (text && text.length > 2) return JSON.parse(text);
-      return [];
+      if (!res.ok) throw new Error("Server error");
+      return await res.json();
     })
     .then(data => {
+      // 2. Map the data from the server directly
       const mappedGrid: WeekData[] = Array.from({ length: 14 }, (_, i) => {
         const weekNum = i + 1;
         const existingWeek = data.find((w: any) => w.weekNumber === weekNum);
-        
         return {
           weekNumber: weekNum,
           attendances: existingWeek ? existingWeek.attendances : [
@@ -71,8 +78,9 @@ export default function StudentAttendanceLog() {
       setWeeks(mappedGrid);
     })
     .catch(err => {
-      console.warn("API Error:", err.message);
-      setWeeks([]); 
+      console.error("Attendance Fetch Failed:", err);
+      // Don't show "No Data", show a clear connection error so the user knows
+      alert("Could not connect to the University Server. Please try again.");
     })
     .finally(() => setIsLoading(false));
   };
