@@ -36,9 +36,11 @@ export default function ManageAttendance() {
   }, [selectedReport]);
 
   // --- DERIVED DATA ---
-  const subjectSessions = allHistory.filter(s => s.subjectId === id && String(s.group) === selectedGroup);
+ const cleanSubjectId = decodeURIComponent(String(id)); // Clean the Vercel URL!
+  
+  const subjectSessions = allHistory.filter(s => s.subjectId === cleanSubjectId && String(s.group) === selectedGroup);
+  
   const activeWeekSessions = selectedWeek ? subjectSessions.filter(s => String(s.week) === String(selectedWeek)) : [];
-
   // --- ACTIONS ---
   const deleteSession = (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();

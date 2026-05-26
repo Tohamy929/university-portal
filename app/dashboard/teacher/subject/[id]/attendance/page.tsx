@@ -269,41 +269,50 @@ export default function AttendancePage() {
     startStream(activeEl, newMode, false);
   };
 
- const submitAttendance = async () => {
-    setIsSubmitting(true);
-    
-    // 1. Sync to the Python Biometric Server
-    await syncToDevice(studentsRef.current);
-    
-    // 2. Format the session record for the Ledger
-    const sessionRecord = {
-      id: Date.now().toString(), 
-      subjectId: String(params.id),
-      week: setup.week, 
-      group: setup.group, 
-      type: setup.type,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      presentCount: studentsRef.current.filter(s => s.present).length,
-      total: studentsRef.current.length,
-      roster: studentsRef.current.map(s => ({ 
-        id: s.id, 
-        name: s.name, 
-        code: s.code, // Make sure we save the College Code for the Ledger!
-        status: s.present ? 'present' : 'absent' 
-      }))
-    };
+const submitAttendance = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // 1. Fire the AI Sync, but DON'T await it so it doesn't block the save on Vercel!
+      syncToDevice(studentsRef.current).catch(e => console.warn("AI Sync bypassed or blocked by Vercel HTTPS", e));
+      
+      // 2. Decode the Subject ID to strip out Vercel's %20 spaces!
+      const cleanSubjectId = decodeURIComponent(String(params.id));
 
-    // 3. Save to LocalStorage so the Ledger page can render it
-    const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
-    localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
-    
-    // Note: When your backend developer finishes the "Submit Attendance" API, 
-    // you will add a `fetch("/api-proxy/Attendance/Submit", { method: "POST", ... })` right here!
+      // 3. Format the session record
+      const sessionRecord = {
+        id: Date.now().toString(), 
+        subjectId: cleanSubjectId, // Use the clean ID
+        week: setup.week, 
+        group: setup.group, 
+        type: setup.type,
+        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        presentCount: studentsRef.current.filter(s => s.present).length,
+        total: studentsRef.current.length,
+        roster: studentsRef.current.map(s => ({ 
+          id: s.id, 
+          name: s.name, 
+          code: s.code, 
+          status: s.present ? 'present' : 'absent' 
+        }))
+      };
 
-    // 4. Redirect to the Ledger
-    router.push(`/dashboard/teacher/subject/${params.id}/attendance/manage`);
+      console.log("Saving Session:", sessionRecord);
+
+      // 4. Save to LocalStorage
+      const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
+      localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
+      
+      // 5. Redirect using the clean ID
+      router.push(`/dashboard/teacher/subject/${cleanSubjectId}/attendance/manage`);
+      
+    } catch (error) {
+      console.error("Critical Error saving attendance:", error);
+      alert("Failed to save attendance. Check browser console.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
   const filteredStudents = students.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (s.code && s.code.toLowerCase().includes(searchTerm.toLowerCase()))
