@@ -161,7 +161,7 @@ export default function AttendancePage() {
     }
   };
 
-  // --- AI LOGIC (FIXED FOR STALE CLOSURES) ---
+  // --- AI LOGIC (WITH TARGETED SUBJECT/GROUP PARAMS) ---
   const processLiveFrame = async () => {
     if (!videoRef.current || activeModalRef.current !== "live" || isAiProcessingRef.current) return;
 
@@ -175,6 +175,9 @@ export default function AttendancePage() {
 
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
+    // Passing targeting parameters for the Python AI
+    formData.append("subjectId", String(params.id));
+    formData.append("group", setup.group);
 
     try {
       setIsAiProcessing(true);
@@ -202,7 +205,11 @@ export default function AttendancePage() {
       const res = await fetch(capturedImage);
       const blob = await res.blob();
       const formData = new FormData();
+      
       formData.append("file", blob, "batch.jpg");
+      // Passing targeting parameters for the Python AI
+      formData.append("subjectId", String(params.id));
+      formData.append("group", setup.group);
 
       const response = await fetch("http://127.0.0.1:8000/recognize_batch", {
         method: "POST",
@@ -228,15 +235,12 @@ export default function AttendancePage() {
   const startStream = async (el: HTMLVideoElement | null, mode: "user" | "environment", isStartingLoop: boolean = false) => {
     if (!el) return;
     try {
-      // Clean up previous tracks to release the camera hardware before switching
       if (el.srcObject) {
         (el.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       }
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: mode } });
       el.srcObject = stream;
       
-      // Only start the processing loop if we are opening the Live modal for the first time
-      // This prevents multiple overlapping loops when the user just flips the camera.
       if (isStartingLoop && activeModalRef.current === "live") {
         setTimeout(processLiveFrame, 2000);
       }
@@ -256,8 +260,6 @@ export default function AttendancePage() {
   const toggleCamera = () => {
     const newMode = facingMode === "user" ? "environment" : "user";
     setFacingMode(newMode);
-    
-    // Restart the stream on the currently active modal without spawning a new AI loop
     const activeEl = activeModal === "live" ? videoRef.current : captureRef.current;
     startStream(activeEl, newMode, false);
   };
@@ -445,14 +447,12 @@ export default function AttendancePage() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/60">
           <div className="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-[4rem] overflow-hidden shadow-2xl border-8 border-white dark:border-gray-800 transition-colors">
             <div className="relative aspect-video bg-black">
-              {/* Added scale transform to act as mirror if the front-facing camera is used */}
               <video ref={videoRef} autoPlay playsInline className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} />
               
               <div className="absolute top-6 left-6 flex items-center gap-3 bg-blue-600 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase shadow-md">
                 <div className={`w-2 h-2 rounded-full bg-white ${isAiProcessing ? 'animate-ping' : ''}`}></div> {scanStatus}
               </div>
 
-              {/* NEW: FLIP CAMERA BUTTON (Top Right) */}
               <div className="absolute top-6 right-6 rtl:right-auto rtl:left-6">
                 <button 
                   onClick={toggleCamera} 
@@ -487,7 +487,6 @@ export default function AttendancePage() {
                 <div className="relative aspect-square bg-black">
                   <video ref={captureRef} autoPlay playsInline className={`w-full h-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} />
                   
-                  {/* NEW: FLIP CAMERA BUTTON (Top Left) */}
                   <button 
                     onClick={toggleCamera} 
                     title={ "Flip Camera"}
@@ -496,7 +495,6 @@ export default function AttendancePage() {
                     <FontAwesomeIcon icon={faSyncAlt} />
                   </button>
 
-                  {/* Close Modal Button (Top Right) */}
                   <button onClick={() => { stopStream(captureRef.current); setActiveModal(null); }} className="absolute top-6 right-6 rtl:right-auto rtl:left-6 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md hover:bg-red-600 transition-colors">
                     <FontAwesomeIcon icon={faTimes} />
                   </button>
@@ -507,7 +505,6 @@ export default function AttendancePage() {
                     canvas.width = captureRef.current!.videoWidth;
                     canvas.height = captureRef.current!.videoHeight;
                     
-                    // If front camera is used, flip the context before drawing to undo the CSS mirror
                     const ctx = canvas.getContext("2d");
                     if (ctx && facingMode === 'user') {
                        ctx.translate(canvas.width, 0);

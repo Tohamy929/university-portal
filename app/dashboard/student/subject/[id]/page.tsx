@@ -18,26 +18,54 @@ export default function StudentSubjectOverview() {
   const [grades, setGrades] = useState<any>(null);
   const [pendingAssignments, setPendingAssignments] = useState<any[]>([]);
 
-  useEffect(() => {
+ useEffect(() => {
     const token = localStorage.getItem("authToken");
     if (!token) { router.push("/login"); return; }
     
-    Promise.all([
-     fetch(`/api-proxy/Subject/GetDetailsForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
-      fetch(`http://smartattend456-001-site1.qtempurl.com/api/Subject/GetStudentGradesForStudentById/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : null),
-     fetch(`/api-proxy/Assignment/GetBySubjectId/${id}`, { headers: { "Authorization": `Bearer ${token}` } }).then(r => r.ok ? r.json() : [])
-    ])
-    .then(([details, gradesData, assignmentsData]) => {
-      setSubjectDetails(details);
-      setGrades(gradesData);
-      if (Array.isArray(assignmentsData)) {
-        setPendingAssignments(assignmentsData.filter(a => !a.submission));
-      }
-    })
-    .catch(() => setErrorMsg("Check your connection or server status"))
-    .finally(() => setIsLoading(false));
-  }, [id, router]);
+    const fetchSubjectData = async () => {
+      try {
+        // Safe cache-busting headers that won't crash ASP.NET
+       // Correctly casting 'no-store' for TypeScript
+        const fetchOptions = {
+          cache: "no-store" as RequestCache, 
+          headers: { 
+            "accept": "*/*",
+            "Authorization": `Bearer ${token}`,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+          }
+        };
 
+        // Fetch 1: Subject Details
+        const detailsRes = await fetch(`/api-proxy/Subject/GetDetailsForStudentById/${id}`, fetchOptions);
+        const details = detailsRes.ok ? await detailsRes.json() : null;
+
+        // Fetch 2: Grades (Waits for Fetch 1 to finish so the backend DB doesn't choke)
+        const gradesRes = await fetch(`/api-proxy/Subject/GetStudentGradesForStudentById/${id}`, fetchOptions);
+        const gradesData = gradesRes.ok ? await gradesRes.json() : null;
+
+        // Fetch 3: Assignments
+        const assignRes = await fetch(`/api-proxy/Assignment/GetBySubjectId/${id}`, fetchOptions);
+        const assignmentsData = assignRes.ok ? await assignRes.json() : [];
+
+        setSubjectDetails(details);
+        setGrades(gradesData);
+        
+        if (Array.isArray(assignmentsData)) {
+          setPendingAssignments(assignmentsData.filter(a => !a.submission));
+        }
+
+      } catch (error) {
+        console.error("Subject Fetch Error:", error);
+        setErrorMsg("Check your connection or server status");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSubjectData();
+  }, [id, router]);
+  
   if (isLoading) return <div className="min-h-[60vh] flex flex-col items-center justify-center text-blue-900 font-black animate-pulse"><FontAwesomeIcon icon={faSpinner} className="animate-spin text-4xl mb-2" /> Loading Overview...</div>;
   if (errorMsg) return <div className="min-h-[60vh] flex flex-col items-center justify-center text-red-500 font-black"><FontAwesomeIcon icon={faExclamationTriangle} className="text-4xl mb-2" /> {errorMsg}</div>;
   if (!subjectDetails) return <div className="min-h-[60vh] flex items-center justify-center text-gray-400 font-black uppercase">No data to display</div>;

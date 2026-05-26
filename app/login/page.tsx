@@ -5,7 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSpinner, faExclamationTriangle, faHome } from "@fortawesome/free-solid-svg-icons";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default  function LoginPage() {
   const router = useRouter();
 
   const [username, setUsername] = useState("");
@@ -17,22 +17,23 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
-
-    try {
+  
+   try {
       // 1. CALL LOGIN API
       const loginResponse = await fetch("/api-proxy/Auth/Login", {
-  method: "POST",
-  headers: { "Content-Type": "application/json", "accept": "*/*" },
-  body: JSON.stringify({ username, password })
-});
+        method: "POST",
+        cache: "no-store", // Bypass POST caching
+        headers: { "Content-Type": "application/json", "accept": "*/*" },
+        body: JSON.stringify({ username, password })
+      });
+
+      // Read the stream exactly once up front to prevent "body stream already read"
+      const responseText = await loginResponse.text();
 
       if (!loginResponse.ok) {
-        const errorText = await loginResponse.text(); 
-        throw new Error(`Login Failed (${loginResponse.status}): ${errorText || "Invalid username or password."}`);
+        throw new Error(`Login Failed (${loginResponse.status}): ${responseText || "Invalid username or password."}`);
       }
 
-      // Read the response from the server
-      const responseText = await loginResponse.text();
       let data;
       try {
          data = JSON.parse(responseText);
@@ -42,31 +43,37 @@ export default function LoginPage() {
       }
 
       // Check all common ways a backend might name the token variable
-      const token = data.jwtToken || data.token || data.jwt || data.accessToken || data.data?.token || (typeof data === 'string' ? data : null);
+      const rawToken = data.jwtToken || data.token || data.jwt || data.accessToken || data.data?.token || (typeof data === 'string' ? data : null);
       
-      if (!token || token === "undefined") {
+      if (!rawToken || rawToken === "undefined") {
         console.error("Backend Response:", data);
         throw new Error("Login succeeded, but no Token was found in the response! Check the browser console.");
       }
 
+      // THE SANITIZER: Strip all quotes and whitespace
+      const cleanToken = String(rawToken).replace(/^"|"$/g, '').trim();
+
       // Save token securely
-      localStorage.setItem("authToken", token);
+      localStorage.setItem("authToken", cleanToken);
 
       // 2. GET USER INFO
-      const userInfoResponse = await fetch("/api-proxy/Auth/GetUserInfo", {
+      // Use both cache: no-store AND the timestamp query param to nuke poisoned caches
+      const userInfoResponse = await fetch(`/api-proxy/Auth/GetUserInfo`, {
         method: "GET",
+        cache: "no-store",
         headers: { 
-          "Authorization": `Bearer ${token}`,
+          "Authorization": `Bearer ${cleanToken}`, // Pass the clean token
           "accept": "*/*" 
         }
       });
 
+      const userInfoText = await userInfoResponse.text();
+
       if (!userInfoResponse.ok) {
-        const errorText = await userInfoResponse.text();
-        throw new Error(`GetUserInfo Failed (${userInfoResponse.status}): The server rejected the token. Details: ${errorText}`);
+        throw new Error(`GetUserInfo Failed (${userInfoResponse.status}): The server rejected the token. Details: ${userInfoText}`);
       }
 
-      const userInfo = await userInfoResponse.json();
+      const userInfo = JSON.parse(userInfoText);
       
       // Attempt to extract the role safely
       const userRole = (userInfo.role || userInfo.roles?.[0] || "student").toLowerCase();
@@ -75,6 +82,7 @@ export default function LoginPage() {
       localStorage.setItem("userRole", userRole);
       const realId = userInfo.id || userInfo.studentId || userInfo.userId || "";
       localStorage.setItem("userId", realId.toString());
+      
       // 3. DYNAMIC ROUTING
       if (userRole === "admin" || userRole === "administrator") {
         router.push("/dashboard/admin");
@@ -91,8 +99,7 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
+  }
   return (
     <div className="relative min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center p-6 transition-colors duration-300">
       

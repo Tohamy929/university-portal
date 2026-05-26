@@ -27,61 +27,80 @@ export default function StudentDashboard() {
   const [phoneInput, setPhoneInput] = useState("");
 
   // --- TWO-STEP SCANNER STATES ---
-  const [scannerState, setScannerState] = useState<"closed" | "qr" | "selfie" | "processing" | "success">("closed");
+  const [scannerState, setScannerState] = useState<"closed" | "qr" | "selfie" | "processing" | "success" | "error">("closed");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
+  const [scannedGroup, setScannedGroup] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  useEffect(() => {
+ useEffect(() => {
     const token = localStorage.getItem("authToken");
     if (!token) { router.push("/login"); return; }
     setAuthToken(token);
     
-    // FETCH LIVE USER INFO
-   fetch("/api-proxy/Auth/GetUserInfo", {
-  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-})
-    .then(async (res) => {
-      const text = await res.text();
-      if (!res.ok) throw new Error(text);
-      return JSON.parse(text);
-    })
-    .then(data => {
-      if (data.role !== "Student") throw new Error("Unauthorized: Not a Student.");
-      
-      localStorage.setItem("studentDatabaseId", data.id.toString());
-      
-      setStudentData({
-        id: data.id,             
-        code: data.code,         
-        name: data.fullName || data.userName,
-        username: data.userName,
-        email: data.email,
-        phone: data.phoneNumber,
-        dept: data.department,
-        gpa: data.gpa || 0,
-        subjects: data.subjects || [],
-        history: data.academicHistory || []
+    // 1. We delay the dashboard fetch by 800ms to give the backend database 
+    // time to recover from the identical request made by the Login page.
+    const fetchProfile = setTimeout(() => {
+      fetch("/api-proxy/Auth/GetUserInfo", {
+        method: "GET",
+        headers: { 
+          "accept": "*/*", 
+          "Authorization": `Bearer ${token}` 
+        }
+      })
+      .then(async (res) => {
+        const text = await res.text();
+        if (!res.ok) {
+          // Identify if it's a security issue (401) or a server crash (500)
+          if (res.status === 401) throw new Error("UNAUTHORIZED");
+          throw new Error(`SERVER_ERROR`);
+        }
+        return JSON.parse(text);
+      })
+      .then(data => {
+        if (data.role !== "Student") throw new Error("UNAUTHORIZED");
+        
+        localStorage.setItem("studentDatabaseId", data.id.toString());
+        
+        setStudentData({
+          id: data.id,             
+          code: data.code,         
+          name: data.fullName || data.userName,
+          username: data.userName,
+          email: data.email,
+          phone: data.phoneNumber,
+          dept: data.department,
+          gpa: data.gpa || 0,
+          subjects: data.subjects || [],
+          history: data.academicHistory || []
+        });
+        
+        setPhoneInput(data.phoneNumber || "");
+        setProfileImage(data.imagePath || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.userName}`);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error("Dashboard Fetch Error:", err);
+        // 2. Smart Error Handling: Only kick out for 401s, not 500s!
+        if (err.message.includes("UNAUTHORIZED")) {
+          setActionMessage({ type: "error", text: "Session expired. Please log in again." });
+          setTimeout(() => { localStorage.clear(); router.push("/login"); }, 2000);
+        } else {
+          setActionMessage({ type: "warning", text: "Server is busy. Please refresh the page." });
+          setIsLoading(false); // Let them stay on the page so they can just hit refresh
+        }
       });
-      
-      setPhoneInput(data.phoneNumber || "");
-      setProfileImage(data.imagePath || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.userName}`);
-    })
-    .catch(err => {
-      console.error(err);
-      setActionMessage({ type: "error", text: "Failed to load profile data. Please log in again." });
-      setTimeout(() => { localStorage.clear(); router.push("/login"); }, 3000);
-    })
-    .finally(() => setIsLoading(false));
-  }, [router]);
+    }, 800); // 800ms breathing room for the backend
 
+    return () => clearTimeout(fetchProfile);
+  }, [router]);
   // --- LOGOUT LOGIC ---
   const handleLogout = async () => {
     try {
       await fetch("/api-proxy/Auth/LogOff", { 
-  headers: { "Authorization": `Bearer ${authToken}` } 
-});
+        headers: { "Authorization": `Bearer ${authToken}` } 
+      });
     } catch (e) {
       console.warn("Logout ping failed, forcing local clear.");
     } finally {
@@ -101,10 +120,10 @@ export default function StudentDashboard() {
       formData.append("File", file);
 
       const response = await fetch("/api-proxy/Auth/UploadUserImage", {
-  method: "POST", 
-  headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-  body: formData 
-});
+        method: "POST", 
+        headers: { "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: formData 
+      });
 
       const text = await response.text();
       if (!response.ok) throw new Error(`Upload Failed: ${text}`);
@@ -114,7 +133,7 @@ export default function StudentDashboard() {
       setActionMessage({ type: "success", text: "Profile picture updated successfully!" });
     } catch (err: any) {
       setActionMessage({ type: "error", text: err.message });
-      setProfileImage(URL.createObjectURL(file)); // Optimistic fallback if server fails mapping
+      setProfileImage(URL.createObjectURL(file)); 
     } finally { setIsUpdating(false); }
   };
 
@@ -128,10 +147,10 @@ export default function StudentDashboard() {
     setIsUpdating(true); setActionMessage(null);
     try {
       const response = await fetch("/api-proxy/Auth/ChangePassword", {
-  method: "POST", 
-  headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-  body: JSON.stringify(passwordForm)
-});
+        method: "POST", 
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        body: JSON.stringify(passwordForm)
+      });
 
       const text = await response.text();
       if (!response.ok) {
@@ -155,7 +174,7 @@ export default function StudentDashboard() {
   const launchScanner = (subjectId: string) => {
     setActiveSubjectId(subjectId);
     setScannerState("qr");
-    setFacingMode("environment"); // Back camera for QR
+    setFacingMode("environment"); 
     setTimeout(() => startStream("environment"), 100);
   };
 
@@ -181,8 +200,11 @@ export default function StudentDashboard() {
   };
 
   const handleQrSuccess = () => {
+    // Simulate extracting target info from the decoded QR
+    setScannedGroup("G1");
+
     setScannerState("selfie");
-    setFacingMode("user"); // Front camera for Face ID
+    setFacingMode("user"); 
     startStream("user");
   };
 
@@ -197,18 +219,39 @@ export default function StudentDashboard() {
     }
     ctx?.drawImage(videoRef.current, 0, 0);
     
-    setCapturedImage(canvas.toDataURL("image/jpeg"));
     stopStream();
     setScannerState("processing");
 
-    // This is where you will route to local python server!
-    setTimeout(() => {
+    try {
+      const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg'));
+      if (!blob) throw new Error("Failed to process image");
+
+      const formData = new FormData();
+      formData.append("file", blob, "selfie.jpg");
+      
+      // Targeted AI matching
+      formData.append("subjectId", String(activeSubjectId));
+      formData.append("group", scannedGroup); 
+
+      // Send to local Python Server
+      const response = await fetch("http://127.0.0.1:8000/recognize", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Facial verification failed.");
+
       setScannerState("success");
       setTimeout(() => {
         setScannerState("closed");
         router.push(`/dashboard/student/subject/${activeSubjectId}/attendance`);
       }, 3000);
-    }, 2500);
+
+    } catch (err) {
+      console.warn("AI Verification Error:", err);
+      setScannerState("error");
+      setTimeout(() => setScannerState("closed"), 3000);
+    }
   };
 
 
@@ -300,7 +343,6 @@ export default function StudentDashboard() {
                         </div>
                         <h4 className="text-lg font-black text-gray-900 uppercase italic leading-tight relative z-10">{sub.name}</h4>
                         
-                        {/* ONLY RENDER IF THERE IS AN ACTIVE SESSION (Currently wired to a backend boolean flag if they ever add it, or can be removed if not needed yet) */}
                         {sub.hasActiveSession && (
                           <div className="mt-6 relative z-10">
                             <button onClick={() => launchScanner(sub.id)} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg hover:bg-blue-500 animate-pulse">
@@ -389,7 +431,6 @@ export default function StudentDashboard() {
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                     <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl"></div>
                  </div>
-                 {/* Mocking the QR read for testing */}
                  <button onClick={handleQrSuccess} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3">Simulate QR Read</button>
                </div>
              )}
@@ -417,7 +458,7 @@ export default function StudentDashboard() {
                <div className="py-20 flex flex-col items-center">
                  <FontAwesomeIcon icon={faSpinner} className="animate-spin text-5xl text-blue-900 mb-6" />
                  <h3 className="text-xl font-black uppercase text-gray-900 italic">Analyzing Biometrics...</h3>
-                 <p className="text-xs font-bold text-gray-500 mt-2">Checking against student database.</p>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Checking against Group {scannedGroup} database.</p>
                </div>
              )}
 
@@ -431,7 +472,17 @@ export default function StudentDashboard() {
                </div>
              )}
 
-             {scannerState !== "processing" && scannerState !== "success" && (
+             {scannerState === "error" && (
+               <div className="py-20 flex flex-col items-center animate-in zoom-in">
+                 <div className="w-24 h-24 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-inner">
+                   <FontAwesomeIcon icon={faTimes} />
+                 </div>
+                 <h3 className="text-2xl font-black uppercase text-red-700 italic">Failed</h3>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Could not verify biometrics.</p>
+               </div>
+             )}
+
+             {(scannerState === "qr" || scannerState === "selfie") && (
                 <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200">Cancel</button>
              )}
           </div>

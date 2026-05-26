@@ -38,9 +38,11 @@ export default function TeacherLobby() {
     }
     setAuthToken(token);
 
-    fetch("/api-proxy/Auth/GetUserInfo", {
-  headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
-})
+  fetch(`/api-proxy/Auth/GetUserInfo?t=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+    })
     .then(async (res) => {
       const textResponse = await res.text();
       if (!res.ok) throw new Error(`Failed to load profile: ${textResponse}`);
