@@ -32,6 +32,8 @@ export default function StudentDashboard() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [scannedGroup, setScannedGroup] = useState<string>("");
+  const [scannedWeek, setScannedWeek] = useState<string>("");
+  const [scannedType, setScannedType] = useState<string>("");
   const videoRef = useRef<HTMLVideoElement>(null);
 
  useEffect(() => {
@@ -232,7 +234,8 @@ export default function StudentDashboard() {
       // Targeted AI matching
       formData.append("subjectId", String(activeSubjectId));
       formData.append("group", scannedGroup); 
-
+formData.append("week", scannedWeek);
+      formData.append("type", scannedType);
       // Send to local Python Server
       const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",

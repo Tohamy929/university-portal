@@ -5,21 +5,18 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faUserCheck, faRobot, faCamera, faCheck, faTimes, 
   faSearch, faSync, faLink, faUnlink, faCircleNotch,
-  faQrcode, faPlay, faPause, faSyncAlt
+  faQrcode, faPlay, faPause, faSyncAlt, faSpinner
 } from "@fortawesome/free-solid-svg-icons";
-
-import { MOCK_USERS, User } from "@/lib/mockUsers";
-import { useTranslation } from "@/src/context/TranslationContext";
 
 export default function AttendancePage() {
   const params = useParams();
   const router = useRouter();
-  const { t, lang } = useTranslation();
   
   // DATA STATES
   const [students, setStudents] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [setup, setSetup] = useState({ group: "", type: "", week: "" });
+  const [isSetupLoading, setIsSetupLoading] = useState(false);
   
   // UI & AI STATES
   const [isStarted, setIsStarted] = useState(false);
@@ -48,18 +45,9 @@ export default function AttendancePage() {
   const isAiProcessingRef = useRef(false);
   const activeModalRef = useRef<string | null>(null);
 
-  // Sync refs with state
   useEffect(() => { studentsRef.current = students; }, [students]);
   useEffect(() => { isAiProcessingRef.current = isAiProcessing; }, [isAiProcessing]);
   useEffect(() => { activeModalRef.current = activeModal; }, [activeModal]);
-
-  // --- INITIALIZATION ---
-  useEffect(() => {
-    const teacherDept = localStorage.getItem("userDept") || "Electrical";
-    const deptStudents = MOCK_USERS.filter((u: User) => u.role === "student" && u.department === teacherDept);
-    const sorted = deptStudents.sort((a, b) => a.name.localeCompare(b.name));
-    setStudents(sorted.map(s => ({ ...s, present: false })));
-  }, []);
 
   // --- HEARTBEAT & SYNC ---
   useEffect(() => {
@@ -84,6 +72,7 @@ export default function AttendancePage() {
         subjectId: params.id,
         week: setup.week,
         group: setup.group,
+        type: setup.type,
         timestamp: new Date().toISOString(),
         students: updatedStudents.map(s => ({ id: s.id, name: s.name, present: s.present }))
       };
@@ -99,15 +88,49 @@ export default function AttendancePage() {
     }
   };
 
+  // --- INITIALIZE SESSION FROM DB ---
+  const startSession = async () => {
+    setIsSetupLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      // Connects directly to the new API endpoint
+      const response = await fetch(`/api-proxy/Attendance/GetByWeekAndGroupAndType/${setup.week}/${setup.group}/${setup.type}`, {
+        headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
+      });
+      
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      
+      // Map the returned API layout to our active session state
+      const mappedStudents = data.map((s: any) => ({
+        id: s.id.toString(), // Internal Database ID used for tracking
+        name: s.name,
+        code: s.code, // College Code displayed in UI
+        present: s.isAttend || false
+      }));
+
+      setStudents(mappedStudents);
+      setIsStarted(true);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to load the student roster from the database.");
+    } finally {
+      setIsSetupLoading(false);
+    }
+  };
+
   // --- QR ROTATION LOGIC ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (showQrPanel && isQrActive) {
-      if (!qrToken) setQrToken(`${params.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+      // Encode the targeted parameters so the student's scanner can extract them
+      const generatePayload = () => JSON.stringify({ s: params.id, g: setup.group, w: setup.week, t: setup.type, n: Math.random().toString(36).substr(2, 5) });
+      
+      if (!qrToken) setQrToken(generatePayload());
       interval = setInterval(() => {
         setQrTimer((prev) => {
           if (prev <= 1) {
-            setQrToken(`${params.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+            setQrToken(generatePayload());
             return 10;
           }
           return prev - 1;
@@ -115,45 +138,22 @@ export default function AttendancePage() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [showQrPanel, isQrActive, params.id, qrToken]);
-
-  // --- POLLING FOR STUDENT SCANS ---
-  useEffect(() => {
-    const pollStudentScans = setInterval(() => {
-      if (!isStarted) return;
-      const recentScans = JSON.parse(localStorage.getItem(`recent_scans_${params.id}`) || "[]");
-      if (recentScans.length > 0) {
-        let updated = false;
-        const currentStudents = [...studentsRef.current];
-        recentScans.forEach((scannedId: string) => {
-          const studentIndex = currentStudents.findIndex(s => s.id === scannedId);
-          if (studentIndex !== -1 && !currentStudents[studentIndex].present) {
-            currentStudents[studentIndex].present = true;
-            updated = true;
-          }
-        });
-        if (updated) {
-          setStudents(currentStudents);
-          syncToDevice(currentStudents);
-          localStorage.setItem(`recent_scans_${params.id}`, "[]");
-        }
-      }
-    }, 2000);
-    return () => clearInterval(pollStudentScans);
-  }, [isStarted]);
+  }, [showQrPanel, isQrActive, params.id, setup, qrToken]);
 
   // --- MAIN ACTIONS ---
   const markStudentPresent = (id: string) => {
-    const newStudents = studentsRef.current.map(s => s.id.toLowerCase() === id.toLowerCase() ? { ...s, present: true } : s);
+    const newStudents = studentsRef.current.map(s => s.id.toString() === id.toString() ? { ...s, present: true } : s);
     setStudents(newStudents);
     setLastMatchedId(id);
-    setScanStatus(`Match: ${id.toUpperCase()}`);
+    
+    const student = newStudents.find(s => s.id.toString() === id.toString());
+    setScanStatus(`Match: ${student?.name || id}`);
     syncToDevice(newStudents);
   };
 
   const handleRescan = () => {
     if (lastMatchedId) {
-      const newStudents = studentsRef.current.map(s => s.id.toLowerCase() === lastMatchedId.toLowerCase() ? { ...s, present: false } : s);
+      const newStudents = studentsRef.current.map(s => s.id.toString() === lastMatchedId.toString() ? { ...s, present: false } : s);
       setStudents(newStudents);
       setLastMatchedId(null);
       setScanStatus("Cleared. Rescanning...");
@@ -161,7 +161,7 @@ export default function AttendancePage() {
     }
   };
 
-  // --- AI LOGIC (WITH TARGETED SUBJECT/GROUP PARAMS) ---
+  // --- AI LOGIC (WITH FULL TARGETED PARAMS) ---
   const processLiveFrame = async () => {
     if (!videoRef.current || activeModalRef.current !== "live" || isAiProcessingRef.current) return;
 
@@ -175,9 +175,12 @@ export default function AttendancePage() {
 
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
-    // Passing targeting parameters for the Python AI
+    
+    // FULL TARGETING: Subject, Group, Week, and Type appended
     formData.append("subjectId", String(params.id));
     formData.append("group", setup.group);
+    formData.append("week", setup.week);
+    formData.append("type", setup.type);
 
     try {
       setIsAiProcessing(true);
@@ -188,6 +191,7 @@ export default function AttendancePage() {
 
       if (response.ok) {
         const data = await response.json();
+        // Uses the ID returned by Python to check off the student
         if (data.student_id) markStudentPresent(data.student_id);
       }
     } catch (err) {
@@ -207,9 +211,11 @@ export default function AttendancePage() {
       const formData = new FormData();
       
       formData.append("file", blob, "batch.jpg");
-      // Passing targeting parameters for the Python AI
+      // FULL TARGETING: Subject, Group, Week, and Type appended
       formData.append("subjectId", String(params.id));
       formData.append("group", setup.group);
+      formData.append("week", setup.week);
+      formData.append("type", setup.type);
 
       const response = await fetch("http://127.0.0.1:8000/recognize_batch", {
         method: "POST",
@@ -231,7 +237,6 @@ export default function AttendancePage() {
     }
   };
 
-  // --- ENHANCED CAMERA CONTROLS ---
   const startStream = async (el: HTMLVideoElement | null, mode: "user" | "environment", isStartingLoop: boolean = false) => {
     if (!el) return;
     try {
@@ -267,22 +272,16 @@ export default function AttendancePage() {
   const submitAttendance = async () => {
     setIsSubmitting(true);
     await syncToDevice(studentsRef.current);
-    const sessionRecord = {
-      id: Date.now().toString(), subjectId: String(params.id),
-      week: setup.week, group: setup.group, type: setup.type,
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      presentCount: studentsRef.current.filter(s => s.present).length,
-      total: studentsRef.current.length,
-      roster: studentsRef.current.map(s => ({ id: s.id, name: s.name, status: s.present ? 'present' : 'absent' }))
-    };
-    const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
-    localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
+    
+    // Note: If you need to actually POST these to the database upon completion, 
+    // you would map `studentsRef.current` back into a payload and fetch POST here.
+    
     router.push(`/dashboard/teacher/subject/${params.id}/attendance/manage`);
   };
 
   const filteredStudents = students.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.id.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.code && s.code.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -290,27 +289,30 @@ export default function AttendancePage() {
       {!isStarted ? (
         /* SETUP VIEW */
         <div className="bg-white dark:bg-gray-900 p-12 rounded-[4rem] shadow-2xl max-w-2xl mx-auto space-y-10 border border-gray-100 dark:border-gray-800">
-           <h2 className="text-3xl font-black text-center uppercase italic text-blue-900 dark:text-blue-400">{t("attendance.setupTitle") || "Session Setup"}</h2>
+           <h2 className="text-3xl font-black text-center uppercase italic text-blue-900 dark:text-blue-400">Session Setup</h2>
            <div className="grid grid-cols-1 gap-6">
               <select onChange={(e) => setSetup({...setup, week: e.target.value})} className="p-5 bg-gray-50 dark:bg-gray-800 rounded-2xl font-bold border-2 border-transparent focus:border-blue-900 outline-none w-full dark:text-white">
-                 <option value="">{ "Select Week"}</option>
+                 <option value="">Select Week</option>
                  {[1,2,3,4,5,6,7,8,9,10,11,12,13,14].map(w => <option key={w} value={w}>Week {w}</option>)}
               </select>
               <select onChange={(e) => setSetup({...setup, group: e.target.value})} className="p-5 bg-gray-50 dark:bg-gray-800 rounded-2xl font-bold border-2 border-transparent focus:border-blue-900 outline-none w-full dark:text-white">
-                 <option value="">{ "Select Group"}</option>
-                 <option value="G1">Group 1</option><option value="G2">Group 2</option>
+                 <option value="">Select Group</option>
+                 {/* Updated to standard numeric IDs to match standard backend API structure */}
+                 <option value="1">Group 1</option>
+                 <option value="2">Group 2</option>
               </select>
               <select onChange={(e) => setSetup({...setup, type: e.target.value})} className="p-5 bg-gray-50 dark:bg-gray-800 rounded-2xl font-bold border-2 border-transparent focus:border-blue-900 outline-none w-full dark:text-white">
-                 <option value="">{ "Select Type"}</option>
-                 <option value="Lecture">Lecture</option><option value="Section">Section</option>
+                 <option value="">Select Type</option>
+                 <option value="Lecture">Lecture</option>
+                 <option value="Section">Section</option>
               </select>
            </div>
            <button 
-             disabled={!setup.week || !setup.group || !setup.type}
-             onClick={() => setIsStarted(true)}
-             className="w-full py-6 bg-blue-900 dark:bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest disabled:opacity-20 transition-all hover:scale-[1.02]"
+             disabled={!setup.week || !setup.group || !setup.type || isSetupLoading}
+             onClick={startSession}
+             className="w-full py-6 bg-blue-900 dark:bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-widest disabled:opacity-50 transition-all hover:scale-[1.02]"
            >
-             { "Open Attendance Log"}
+             {isSetupLoading ? <FontAwesomeIcon icon={faSpinner} spin /> : "Open Attendance Log"}
            </button>
         </div>
       ) : (
@@ -324,7 +326,7 @@ export default function AttendancePage() {
                  <div>
                     <h1 className="font-black text-xl uppercase italic">{setup.type}: {params.id}</h1>
                     <div className="flex items-center gap-2 mt-1">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Week {setup.week} • {setup.group}</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Week {setup.week} • Group {setup.group}</p>
                       <div className="flex items-center gap-2">
                         <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter ${aiServerOnline ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                           <FontAwesomeIcon icon={aiServerOnline ? faLink : faUnlink} />
@@ -343,14 +345,14 @@ export default function AttendancePage() {
               <div className="flex flex-wrap items-center gap-4">
                  <div className="relative hidden md:block">
                     <FontAwesomeIcon icon={faSearch} className="absolute left-4 rtl:left-auto rtl:right-4 top-1/2 -translate-y-1/2 text-gray-300" />
-                    <input type="text" placeholder={ "Find..."} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-900 w-40 dark:text-white" />
+                    <input type="text" placeholder={"Find..."} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 rtl:pl-4 rtl:pr-10 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-900 w-40 dark:text-white" />
                  </div>
                  
                  <button 
                   onClick={() => { setShowQrPanel(!showQrPanel); setIsQrActive(true); }} 
                   className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase flex items-center gap-2 transition-all shadow-md ${showQrPanel ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-300 border-2 border-blue-900 dark:border-blue-500' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                  >
-                   <FontAwesomeIcon icon={faQrcode} /> { "QR Mode"}
+                   <FontAwesomeIcon icon={faQrcode} /> {"QR Mode"}
                  </button>
 
                  <button onClick={() => { setActiveModal("live"); setTimeout(() => startStream(videoRef.current, facingMode, true), 100); }} className="px-6 py-3 bg-blue-900 dark:bg-blue-600 text-white rounded-xl font-black text-[10px] uppercase flex items-center gap-2 shadow-md hover:scale-105 transition-transform"><FontAwesomeIcon icon={faRobot} /> AI Scan</button>
@@ -363,21 +365,21 @@ export default function AttendancePage() {
              <div className="bg-white dark:bg-gray-900 p-8 rounded-[3.5rem] shadow-xl border-4 border-blue-900/10 dark:border-blue-500/20 flex flex-col md:flex-row items-center gap-10 animate-in slide-in-from-top-4 duration-300">
                 <div className="flex-1 space-y-6 text-center md:text-left rtl:md:text-right">
                   <div>
-                    <h2 className="text-2xl font-black uppercase italic text-blue-900 dark:text-blue-400">{t("attendance.qrTitle") || "Dynamic QR Attendance"}</h2>
-                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-2">{t("attendance.qrInstructions") || "Instructions for Students:"}</p>
+                    <h2 className="text-2xl font-black uppercase italic text-blue-900 dark:text-blue-400">Dynamic QR Attendance</h2>
+                    <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-2">Instructions for Students:</p>
                   </div>
                   <div className="space-y-3 bg-gray-50 dark:bg-gray-800 p-6 rounded-[2rem] text-sm font-medium">
-                    <p>{ "1. Open your Student Portal."}</p>
-                    <p>{ "2. Click 'Scan QR' to open camera."}</p>
-                    <p>{ "3. Scan this code before timer resets."}</p>
+                    <p>1. Open your Student Portal.</p>
+                    <p>2. Click 'Scan QR' to open camera.</p>
+                    <p>3. Scan this code before timer resets.</p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
                     <button onClick={() => setIsQrActive(!isQrActive)} className={`px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-md transition-all ${isQrActive ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'}`}>
                       <FontAwesomeIcon icon={isQrActive ? faPause : faPlay} /> 
-                      {isQrActive ? ( "Pause") : ( "Resume")}
+                      {isQrActive ? "Pause" : "Resume"}
                     </button>
                     <button onClick={() => { setShowQrPanel(false); setIsQrActive(false); }} className="px-8 py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                      { "Close Panel"}
+                      Close Panel
                     </button>
                     <button onClick={() => { const absentStudents = studentsRef.current.filter(s => !s.present); if (absentStudents.length > 0) markStudentPresent(absentStudents[0].id); }} className="px-4 py-4 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl text-[10px] font-bold uppercase underline">
                       Simulate Scan
@@ -395,7 +397,7 @@ export default function AttendancePage() {
                   </div>
                   <div className="w-full text-center space-y-2">
                     <div className="flex justify-between text-[10px] font-black uppercase text-gray-400">
-                      <span>{ "Refreshing in"}</span>
+                      <span>Refreshing in</span>
                       <span className={qrTimer <= 3 ? "text-red-500" : ""}>{qrTimer}s</span>
                     </div>
                     <div className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -419,7 +421,7 @@ export default function AttendancePage() {
                   className={`p-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${s.present ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800'}`}
                 >
                   <p className={`font-black text-[10px] uppercase truncate w-full ${s.present ? 'text-green-900 dark:text-green-400' : 'text-gray-900 dark:text-gray-300'}`}>{s.name}</p>
-                  <p className="text-[8px] font-bold text-gray-400">{s.id}</p>
+                  <p className="text-[8px] font-bold text-gray-400">{s.code || s.id}</p>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${s.present ? 'bg-green-600 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600'}`}>
                     <FontAwesomeIcon icon={s.present ? faCheck : faTimes} size="xs" />
                   </div>
@@ -431,11 +433,11 @@ export default function AttendancePage() {
            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-3xl z-50">
               <div className="bg-gray-900 dark:bg-black text-white p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl border border-white/10 backdrop-blur-md">
                  <div className="px-4">
-                    <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest">{t("attendance.present") || "Presence"}</p>
+                    <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest">Presence</p>
                     <p className="text-2xl font-black italic">{students.filter(s => s.present).length} / {students.length}</p>
                  </div>
                  <button onClick={submitAttendance} disabled={isSubmitting} className="bg-blue-600 px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-500 transition-all disabled:opacity-50">
-                    { "Finalize Session"}
+                    Finalize Session
                  </button>
               </div>
            </div>
@@ -456,7 +458,7 @@ export default function AttendancePage() {
               <div className="absolute top-6 right-6 rtl:right-auto rtl:left-6">
                 <button 
                   onClick={toggleCamera} 
-                  title={ "Flip Camera"}
+                  title="Flip Camera"
                   className="w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md hover:bg-black/70 transition-colors"
                 >
                   <FontAwesomeIcon icon={faSyncAlt} />
@@ -467,10 +469,10 @@ export default function AttendancePage() {
             <div className="p-10 text-center space-y-6">
               <div className="flex gap-4">
                 <button onClick={handleRescan} disabled={!lastMatchedId} className="flex-1 py-4 bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-2xl font-black text-[10px] uppercase border border-orange-100 dark:border-orange-800 disabled:opacity-30 transition-colors">
-                  <FontAwesomeIcon icon={faSync} className="mr-2" /> { "Undo & Rescan"}
+                  <FontAwesomeIcon icon={faSync} className="mr-2" /> Undo & Rescan
                 </button>
                 <button onClick={() => { stopStream(videoRef.current); setActiveModal(null); }} className="flex-1 py-4 bg-gray-900 dark:bg-gray-700 text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
-                  { "Stop Scanner"}
+                  Stop Scanner
                 </button>
               </div>
             </div>
@@ -489,7 +491,7 @@ export default function AttendancePage() {
                   
                   <button 
                     onClick={toggleCamera} 
-                    title={ "Flip Camera"}
+                    title="Flip Camera"
                     className="absolute top-6 left-6 rtl:left-auto rtl:right-6 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center backdrop-blur-md hover:bg-black/70 transition-colors"
                   >
                     <FontAwesomeIcon icon={faSyncAlt} />
@@ -524,10 +526,10 @@ export default function AttendancePage() {
                 <img src={capturedImage} className="w-full aspect-square object-cover" alt="Captured class" />
                 <div className="p-8 grid grid-cols-2 gap-4">
                   <button onClick={() => setCapturedImage(null)} className="py-4 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
-                    {"Discard"}
+                    Discard
                   </button>
                   <button onClick={processCapturedPhoto} disabled={isAiProcessing} className="py-4 bg-blue-900 dark:bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
-                    {isAiProcessing ? ( "AI Syncing...") : ( "Send to AI")}
+                    {isAiProcessing ? "AI Syncing..." : "Send to AI"}
                   </button>
                 </div>
               </>

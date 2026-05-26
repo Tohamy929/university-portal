@@ -30,7 +30,11 @@ export default function StudentAttendanceLog() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [scannerState, setScannerState] = useState<"closed" | "qr" | "selfie" | "processing" | "success" | "error">("closed");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  
+  // NEW TARGETING STATES
   const [scannedGroup, setScannedGroup] = useState<string>("");
+  const [scannedWeek, setScannedWeek] = useState<string>("");
+  const [scannedType, setScannedType] = useState<string>("");
 
   useEffect(() => {
     const token = localStorage.getItem("authToken");
@@ -43,7 +47,6 @@ export default function StudentAttendanceLog() {
 
   const fetchLog = (token: string, studentId: string) => {
     fetch(`/api-proxy/Attendance/GetAttendancesBySubjectAndStudent/${id}/${studentId}`, {
-       cache: "no-store",
       headers: { "accept": "*/*", "Authorization": `Bearer ${token}` }
     })
     .then(async (res) => {
@@ -74,7 +77,6 @@ export default function StudentAttendanceLog() {
     .finally(() => setIsLoading(false));
   };
 
-  // --- SCANNER LOGIC ---
   const launchScanner = () => {
     setScannerState("qr");
     setFacingMode("environment"); 
@@ -103,8 +105,10 @@ export default function StudentAttendanceLog() {
   };
 
   const handleQrSuccess = () => {
-    // 1. Simulate reading the teacher's QR code and extracting the targeted group
-    setScannedGroup("G1"); 
+    // 1. Simulate reading the teacher's QR code and extracting ALL parameters
+    setScannedGroup("1"); // Group ID
+    setScannedWeek("1");  // Week Number
+    setScannedType("Lecture"); 
     
     // 2. Switch to Face ID mode
     setScannerState("selfie");
@@ -133,9 +137,11 @@ export default function StudentAttendanceLog() {
       const formData = new FormData();
       formData.append("file", blob, "selfie.jpg");
       
-      // We append the exact Subject and Group to tightly target the AI search!
+      // FULL TARGETING: We now append all data extracted from the QR code!
       formData.append("subjectId", String(id));
       formData.append("group", scannedGroup); 
+      formData.append("week", scannedWeek);
+      formData.append("type", scannedType);
 
       // Send to local Python Server
       const response = await fetch("http://127.0.0.1:8000/recognize", {
@@ -145,8 +151,6 @@ export default function StudentAttendanceLog() {
 
       if (!response.ok) throw new Error("Facial verification failed.");
 
-      // If success, the backend should ideally update the database. 
-      // We show success and re-fetch the log grid to show the green checkmark.
       setScannerState("success");
       setTimeout(() => {
         setScannerState("closed");
@@ -305,7 +309,7 @@ export default function StudentAttendanceLog() {
                <div className="py-20 flex flex-col items-center">
                  <FontAwesomeIcon icon={faSpinner} className="animate-spin text-5xl text-blue-900 mb-6" />
                  <h3 className="text-xl font-black uppercase text-gray-900 italic">Analyzing Biometrics...</h3>
-                 <p className="text-xs font-bold text-gray-500 mt-2">Checking against Group {scannedGroup} database.</p>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Checking against database.</p>
                </div>
              )}
 
