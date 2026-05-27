@@ -113,12 +113,16 @@ export default function AdminDashboard() {
 const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
+      // THE FIX: Both parameters go into the URL!
+      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}&isApproved=true`, { 
         method: "POST", 
         cache: "no-store", 
-        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-        // THE FIX: Capital 'U' and 'I' for ASP.NET strict model binding
-        body: JSON.stringify({ Username: username, IsApproved: true }) 
+        headers: { 
+          "Content-Type": "application/json", // Keeps ASP.NET happy (prevents 415 error)
+          "accept": "*/*", 
+          "Authorization": `Bearer ${authToken}` 
+        }, 
+        body: JSON.stringify({}) // Empty body since data is in the URL
       });
 
       const text = await response.text();
@@ -147,12 +151,16 @@ const handleApprove = async (username: string) => {
     
     setActionMessage(null);
     try {
-      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
+      // THE FIX: Both parameters go into the URL, with isApproved=false!
+      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}&isApproved=false`, { 
         method: "POST", 
         cache: "no-store", 
-        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-        // THE FIX: Capital 'U' and 'I' for ASP.NET strict model binding
-        body: JSON.stringify({ Username: username, IsApproved: false }) 
+        headers: { 
+          "Content-Type": "application/json", 
+          "accept": "*/*", 
+          "Authorization": `Bearer ${authToken}` 
+        }, 
+        body: JSON.stringify({}) // Empty body
       });
 
       const text = await response.text();
