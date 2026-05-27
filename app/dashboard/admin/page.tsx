@@ -183,14 +183,15 @@ const handleApprove = async (username: string) => {
       console.error(error);
     }
   };
+ 
  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault(); 
     setIsLoading(true); 
     setActionMessage(null);
     try {
-      // Mapped EXACTLY to your backend Swagger response body
+      // 1. WE DEFINE THE PAYLOAD HERE
       const payload = { 
-        name: formData.fullName.split(' ')[0], // Extracts first name
+        name: formData.fullName.split(' ')[0],
         fullName: formData.fullName,
         username: formData.username,
         code: formData.code,
@@ -201,6 +202,7 @@ const handleApprove = async (username: string) => {
         role: formData.role
       };
 
+      // 2. WE USE THE PAYLOAD HERE
       const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { 
         method: "POST", 
         cache: "no-store", 
@@ -218,7 +220,6 @@ const handleApprove = async (username: string) => {
         let cleanError = text;
         try {
           const errObj = JSON.parse(text);
-          // ASP.NET Identity errors usually live in 'errors' or an array of descriptions
           if (errObj.errors) cleanError = Object.values(errObj.errors).flat().join(" | ");
           else if (errObj.message) cleanError = errObj.message;
           else if (errObj.title) cleanError = errObj.title;
