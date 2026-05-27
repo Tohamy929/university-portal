@@ -113,16 +113,16 @@ export default function AdminDashboard() {
 const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      // THE FIX: Both parameters go into the URL!
-      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}&isApproved=true`, { 
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
         method: "POST", 
         cache: "no-store", 
         headers: { 
-          "Content-Type": "application/json", // Keeps ASP.NET happy (prevents 415 error)
+          "Content-Type": "application/json", 
           "accept": "*/*", 
           "Authorization": `Bearer ${authToken}` 
         }, 
-        body: JSON.stringify({}) // Empty body since data is in the URL
+        // THE FIX: We now have the real username, so we send the exact JSON Swagger wants!
+        body: JSON.stringify({ username: username, isApproved: true }) 
       });
 
       const text = await response.text();
@@ -138,7 +138,7 @@ const handleApprove = async (username: string) => {
       }
 
       setActionMessage({ type: "success", text: `User ${username} approved!` });
-      setPendingUsers(pendingUsers.filter(u => u.username !== username));
+      setPendingUsers(pendingUsers.filter(u => u.userName !== username)); // Ensure filter uses userName
       
     } catch (error: any) { 
       setActionMessage({ type: "error", text: error.message || "Failed to approve." }); 
@@ -151,8 +151,7 @@ const handleApprove = async (username: string) => {
     
     setActionMessage(null);
     try {
-      // THE FIX: Both parameters go into the URL, with isApproved=false!
-      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}&isApproved=false`, { 
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
         method: "POST", 
         cache: "no-store", 
         headers: { 
@@ -160,7 +159,8 @@ const handleApprove = async (username: string) => {
           "accept": "*/*", 
           "Authorization": `Bearer ${authToken}` 
         }, 
-        body: JSON.stringify({}) // Empty body
+        // THE FIX: We send the real username and isApproved: false
+        body: JSON.stringify({ username: username, isApproved: false }) 
       });
 
       const text = await response.text();
@@ -176,7 +176,7 @@ const handleApprove = async (username: string) => {
       }
 
       setActionMessage({ type: "success", text: `User ${username} rejected and removed.` });
-      setPendingUsers(pendingUsers.filter(u => u.username !== username));
+      setPendingUsers(pendingUsers.filter(u => u.userName !== username)); // Ensure filter uses userName
       
     } catch (error: any) { 
       setActionMessage({ type: "error", text: error.message || "Failed to reject." }); 
