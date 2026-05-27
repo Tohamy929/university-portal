@@ -188,17 +188,17 @@ const handleApprove = async (username: string) => {
     setIsLoading(true); 
     setActionMessage(null);
     try {
-      // THE FIX: Explicitly translate the payload into ASP.NET's strict PascalCase
+      // Mapped EXACTLY to your backend Swagger response body
       const payload = { 
-        FullName: formData.fullName,
-        Username: formData.username,
-        Email: formData.email,
-        PhoneNumber: formData.phoneNumber,
-        Password: formData.password,
-        Code: formData.code,
-        DepartmentId: parseInt(formData.departmentId) || 0,
-        Role: formData.role,
-        Name: formData.fullName.split(' ')[0] 
+        name: formData.fullName.split(' ')[0], // Extracts first name
+        fullName: formData.fullName,
+        username: formData.username,
+        code: formData.code,
+        email: formData.email,
+        departmentId: parseInt(formData.departmentId) || 0,
+        phoneNumber: formData.phoneNumber,
+        password: formData.password,
+        role: formData.role
       };
 
       const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { 
@@ -212,26 +212,20 @@ const handleApprove = async (username: string) => {
         body: JSON.stringify(payload) 
       });
 
-      // 1. Read the stream exactly once
       const text = await response.text();
 
-      // 2. Safely parse the backend failure
       if (!response.ok) {
         let cleanError = text;
         try {
           const errObj = JSON.parse(text);
-          if (errObj.errors) {
-            cleanError = Object.values(errObj.errors).flat().join(" | ");
-          } else if (errObj.title) {
-            cleanError = errObj.title;
-          } else if (errObj.message) {
-            cleanError = errObj.message; // ASP.NET Identity sometimes uses 'message'
-          }
+          // ASP.NET Identity errors usually live in 'errors' or an array of descriptions
+          if (errObj.errors) cleanError = Object.values(errObj.errors).flat().join(" | ");
+          else if (errObj.message) cleanError = errObj.message;
+          else if (errObj.title) cleanError = errObj.title;
         } catch {}
         throw new Error(cleanError);
       }
 
-      // 3. Success state
       setActionMessage({ type: "success", text: `User created successfully!` });
       setFormData({ fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" });
       
@@ -241,7 +235,6 @@ const handleApprove = async (username: string) => {
       setIsLoading(false); 
     }
   };
-
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault(); setIsLoading(true); setActionMessage(null);
     try {
