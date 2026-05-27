@@ -117,24 +117,32 @@ const handleApprove = async (username: string) => {
         method: "POST", 
         cache: "no-store", 
         headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-        // We pass the exact schema the backend requested:
-        body: JSON.stringify({ username: username, isApproved: true }) 
+        // THE FIX: Capital 'U' and 'I' for ASP.NET strict model binding
+        body: JSON.stringify({ Username: username, IsApproved: true }) 
       });
 
       const text = await response.text();
-      if (!response.ok) throw new Error(text);
+      
+      if (!response.ok) {
+        let cleanError = text;
+        try {
+          const errObj = JSON.parse(text);
+          if (errObj.errors) cleanError = Object.values(errObj.errors).flat().join(" | ");
+          else if (errObj.title) cleanError = errObj.title;
+        } catch {}
+        throw new Error(cleanError);
+      }
 
       setActionMessage({ type: "success", text: `User ${username} approved!` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
       
     } catch (error: any) { 
-      setActionMessage({ type: "error", text: "Failed to approve: Check console." }); 
+      setActionMessage({ type: "error", text: error.message || "Failed to approve." }); 
       console.error(error);
     }
   };
 
   const handleReject = async (username: string) => {
-    // Optional: Add a confirmation dialog so admins don't accidentally click it
     if (!confirm(`Are you sure you want to permanently reject ${username}?`)) return;
     
     setActionMessage(null);
@@ -143,18 +151,27 @@ const handleApprove = async (username: string) => {
         method: "POST", 
         cache: "no-store", 
         headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
-        // Sending 'false' triggers the backend to delete/reject the request:
-        body: JSON.stringify({ username: username, isApproved: false }) 
+        // THE FIX: Capital 'U' and 'I' for ASP.NET strict model binding
+        body: JSON.stringify({ Username: username, IsApproved: false }) 
       });
 
       const text = await response.text();
-      if (!response.ok) throw new Error(text);
+      
+      if (!response.ok) {
+        let cleanError = text;
+        try {
+          const errObj = JSON.parse(text);
+          if (errObj.errors) cleanError = Object.values(errObj.errors).flat().join(" | ");
+          else if (errObj.title) cleanError = errObj.title;
+        } catch {}
+        throw new Error(cleanError);
+      }
 
       setActionMessage({ type: "success", text: `User ${username} rejected and removed.` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
       
     } catch (error: any) { 
-      setActionMessage({ type: "error", text: "Failed to reject: Check console." }); 
+      setActionMessage({ type: "error", text: error.message || "Failed to reject." }); 
       console.error(error);
     }
   };
