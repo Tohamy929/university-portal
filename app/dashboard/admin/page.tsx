@@ -184,19 +184,62 @@ const handleApprove = async (username: string) => {
     }
   };
  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault(); setIsLoading(true); setActionMessage(null);
+    e.preventDefault(); 
+    setIsLoading(true); 
+    setActionMessage(null);
     try {
-      const payload = { ...formData, departmentId: parseInt(formData.departmentId) || 0, name: formData.fullName.split(' ')[0] };
+      // THE FIX: Explicitly translate the payload into ASP.NET's strict PascalCase
+      const payload = { 
+        FullName: formData.fullName,
+        Username: formData.username,
+        Email: formData.email,
+        PhoneNumber: formData.phoneNumber,
+        Password: formData.password,
+        Code: formData.code,
+        DepartmentId: parseInt(formData.departmentId) || 0,
+        Role: formData.role,
+        Name: formData.fullName.split(' ')[0] 
+      };
+
       const response = await fetch("/api-proxy/Auth/CreateStudentOrTeacher", { 
         method: "POST", 
-        cache: "no-store", // <--- ADDS CACHE BYPASS
-        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        cache: "no-store", 
+        headers: { 
+          "Content-Type": "application/json", 
+          "accept": "*/*", 
+          "Authorization": `Bearer ${authToken}` 
+        }, 
         body: JSON.stringify(payload) 
       });
-      if (!response.ok) throw new Error(await response.text());
+
+      // 1. Read the stream exactly once
+      const text = await response.text();
+
+      // 2. Safely parse the backend failure
+      if (!response.ok) {
+        let cleanError = text;
+        try {
+          const errObj = JSON.parse(text);
+          if (errObj.errors) {
+            cleanError = Object.values(errObj.errors).flat().join(" | ");
+          } else if (errObj.title) {
+            cleanError = errObj.title;
+          } else if (errObj.message) {
+            cleanError = errObj.message; // ASP.NET Identity sometimes uses 'message'
+          }
+        } catch {}
+        throw new Error(cleanError);
+      }
+
+      // 3. Success state
       setActionMessage({ type: "success", text: `User created successfully!` });
       setFormData({ fullName: "", username: "", email: "", phoneNumber: "", password: "", code: "", departmentId: "", role: "Student" });
-    } catch (error: any) { setActionMessage({ type: "error", text: error.message }); } finally { setIsLoading(false); }
+      
+    } catch (error: any) { 
+      setActionMessage({ type: "error", text: error.message || "Failed to create user." }); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   const handleCreateDepartment = async (e: React.FormEvent) => {
