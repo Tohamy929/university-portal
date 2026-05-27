@@ -90,43 +90,60 @@ export default function AttendancePage() {
 
   // --- INITIALIZE SESSION FROM DB ---
   // --- INITIALIZE SESSION FROM DB ---
+  // --- INITIALIZE SESSION FROM DB (THE GRADEBOOK BYPASS) ---
+  // --- INITIALIZE SESSION FROM DB (THE GRADEBOOK BYPASS) ---
   const startSession = async () => {
     setIsSetupLoading(true);
     try {
       const token = localStorage.getItem("authToken");
+      const cleanSubjectId = decodeURIComponent(String(params.id)); 
       
-      // 1. Safe Cache-Busting Headers
-      const fetchOptions = {
-        cache: "no-store" as RequestCache, 
+      // 1. INLINE FETCH OPTIONS (Bypasses TypeScript 'RequestCache' strictly)
+      const response = await fetch(`/api-proxy/Subject/GetStudentGradesForTeacherById/${cleanSubjectId}`, {
+        method: "GET",
+        cache: "no-store", 
         headers: { 
           "accept": "*/*", 
           "Authorization": `Bearer ${token}`,
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "Pragma": "no-cache"
         }
-      };
+      });
+      
+      // 2. SAFE STREAM READING
+      const text = await response.text();
+      if (!response.ok) throw new Error(`Backend Error: ${text}`);
+      
+      // 3. SAFE PARSING (In case the backend returns empty text instead of JSON)
+      const data = text ? JSON.parse(text) : [];
 
-      // 2. Fetch the roster
-      // NOTE: When your backend developer updates the API to include the Subject ID, 
-      // you will need to update this URL to pass `params.id`!
-      const response = await fetch(`/api-proxy/Attendance/GetByWeekAndGroupAndType/${setup.week}/${setup.group}/${setup.type}`, fetchOptions);
+      // 4. ARRAY VERIFICATION (If the backend sends an object instead of an array, force it into one)
+      const studentArray = Array.isArray(data) ? data : (data ? [data] : []);
       
-      if (!response.ok) throw new Error(await response.text());
-      const data = await response.json();
-      
-      // Map the returned API layout to our active session state
-      const mappedStudents = data.map((s: any) => ({
-        id: s.id.toString(), // Internal Database ID used for tracking
-        name: s.name,
-        code: s.code, // College Code displayed in UI
-        present: s.isAttend || false
+      // 5. BULLETPROOF MAPPING
+      let mappedStudents = studentArray.map((s: any) => ({
+        // Fallback to studentGradeId if studentCode is null/missing so it never crashes
+        id: String(s.studentCode || s.studentGradeId || Math.random()), 
+        name: s.studentName || "Unknown Student",
+        code: s.studentCode || "No Code", 
+        group: s.groupNumber, 
+        present: false 
       }));
+
+      // 6. FILTER
+      mappedStudents = mappedStudents.filter(s => String(s.group) === String(setup.group));
+
+      if (mappedStudents.length === 0) {
+        alert(`Warning: No students found enrolled in Group ${setup.group} for this subject.`);
+      }
 
       setStudents(mappedStudents);
       setIsStarted(true);
-    } catch (error) {
-      console.error("Session Setup Error:", error);
-      alert("Failed to load the student roster from the database.");
+      
+    } catch (error: any) {
+      // NOW IT WILL TELL YOU EXACTLY WHAT THE INVISIBLE ERROR WAS!
+      console.error("🚨 CRITICAL SESSION SETUP ERROR:", error.message || error);
+      alert(`Setup Failed: ${error.message || "Check the console for details."}`);
     } finally {
       setIsSetupLoading(false);
     }

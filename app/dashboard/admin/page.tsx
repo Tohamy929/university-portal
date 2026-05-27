@@ -113,40 +113,49 @@ export default function AdminDashboard() {
 const handleApprove = async (username: string) => {
     setActionMessage(null);
     try {
-      const response = await fetch(`/api-proxy/Auth/ApproveUser?username=${encodeURIComponent(username)}`, { 
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
         method: "POST", 
         cache: "no-store", 
-        headers: { 
-          "Content-Type": "application/json", // <-- WE PUT THIS BACK!
-          "accept": "*/*", 
-          "Authorization": `Bearer ${authToken}` 
-        },
-       body: JSON.stringify(username) // Send an empty body so the JSON parser doesn't choke
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        // We pass the exact schema the backend requested:
+        body: JSON.stringify({ username: username, isApproved: true }) 
       });
 
-      // 1. Read the stream exactly once
       const text = await response.text();
+      if (!response.ok) throw new Error(text);
 
-      // 2. Safely parse the backend failure
-      if (!response.ok) {
-        let cleanError = text;
-        try {
-          const errObj = JSON.parse(text);
-          if (errObj.errors) {
-            cleanError = Object.values(errObj.errors).flat().join(" | ");
-          } else if (errObj.title) {
-            cleanError = errObj.title;
-          }
-        } catch { /* Not JSON */ }
-        throw new Error(cleanError || "Failed to approve user.");
-      }
-
-      // 3. Success state
       setActionMessage({ type: "success", text: `User ${username} approved!` });
       setPendingUsers(pendingUsers.filter(u => u.username !== username));
       
     } catch (error: any) { 
-      setActionMessage({ type: "error", text: error.message }); 
+      setActionMessage({ type: "error", text: "Failed to approve: Check console." }); 
+      console.error(error);
+    }
+  };
+
+  const handleReject = async (username: string) => {
+    // Optional: Add a confirmation dialog so admins don't accidentally click it
+    if (!confirm(`Are you sure you want to permanently reject ${username}?`)) return;
+    
+    setActionMessage(null);
+    try {
+      const response = await fetch("/api-proxy/Auth/ApproveUser", { 
+        method: "POST", 
+        cache: "no-store", 
+        headers: { "Content-Type": "application/json", "accept": "*/*", "Authorization": `Bearer ${authToken}` }, 
+        // Sending 'false' triggers the backend to delete/reject the request:
+        body: JSON.stringify({ username: username, isApproved: false }) 
+      });
+
+      const text = await response.text();
+      if (!response.ok) throw new Error(text);
+
+      setActionMessage({ type: "success", text: `User ${username} rejected and removed.` });
+      setPendingUsers(pendingUsers.filter(u => u.username !== username));
+      
+    } catch (error: any) { 
+      setActionMessage({ type: "error", text: "Failed to reject: Check console." }); 
+      console.error(error);
     }
   };
  const handleCreateUser = async (e: React.FormEvent) => {
@@ -283,7 +292,7 @@ const handleApprove = async (username: string) => {
                     <div key={idx} className="bg-white dark:bg-gray-900 p-5 md:p-6 rounded-[2rem] border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-4 w-full sm:w-auto"><div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-blue-50 text-blue-900 flex items-center justify-center text-lg md:text-xl font-black">{(user.fullName || user.name || "U").charAt(0)}</div><div><p className="font-black uppercase text-xs md:text-sm text-gray-900 dark:text-white">{user.fullName || user.name} <span className="text-gray-400 font-normal">(@{user.username})</span></p><p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{user.role || "User"}</p></div></div>
                       <div className="flex gap-2 w-full sm:w-auto">
-                        <button onClick={() => alert("No Reject API provided by backend yet.")} className="flex-1 sm:flex-none px-4 md:px-6 py-3 bg-red-50 text-red-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-colors">Reject</button>
+                        <button onClick={() =>handleReject(user.username)} className="flex-1 sm:flex-none px-4 md:px-6 py-3 bg-red-50 text-red-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-100 transition-colors">Reject</button>
                         <button onClick={() => handleApprove(user.username)} className="flex-1 sm:flex-none px-4 md:px-6 py-3 bg-green-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-md hover:bg-green-600 transition-colors"><FontAwesomeIcon icon={faCheckCircle} className="mr-2" /> Approve</button>
                       </div>
                     </div>
