@@ -17,6 +17,7 @@ export default function AttendancePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [setup, setSetup] = useState({ group: "", type: "", week: "" });
   const [isSetupLoading, setIsSetupLoading] = useState(false);
+  const [batchSummary, setBatchSummary] = useState<string | null>(null);
   
   // UI & AI STATES
   const [isStarted, setIsStarted] = useState(false);
@@ -64,6 +65,30 @@ export default function AttendancePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // --- WEBSOCKET FOR LIVE UPDATES ---
+  useEffect(() => {
+    if (!isStarted || !setup.group) return;
+
+    // TODO FOR BACKEND: Update this URL to match your real WebSocket / SignalR Hub URL
+    const ws = new WebSocket(`wss://your-backend-url.com/ws/attendance?subjectId=${params.id}&group=${setup.group}`);
+
+    ws.onopen = () => console.log("🟢 WebSocket Connected for Real-Time Updates");
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.studentId && data.status === "present") {
+          markStudentPresent(data.studentId);
+        }
+      } catch (e) {
+        console.error("WebSocket message error:", e);
+      }
+    };
+
+    ws.onclose = () => console.log("🔴 WebSocket Disconnected");
+    return () => ws.close();
+  }, [isStarted, setup, params.id]);
+
   const syncToDevice = async (updatedStudents: any[]) => {
     if (!aiServerOnline) return;
     setIsSyncing(true);
@@ -88,9 +113,6 @@ export default function AttendancePage() {
     }
   };
 
-  // --- INITIALIZE SESSION FROM DB ---
-  // --- INITIALIZE SESSION FROM DB ---
-  // --- INITIALIZE SESSION FROM DB (THE GRADEBOOK BYPASS) ---
   // --- INITIALIZE SESSION FROM DB (THE GRADEBOOK BYPASS) ---
   const startSession = async () => {
     setIsSetupLoading(true);
@@ -98,7 +120,6 @@ export default function AttendancePage() {
       const token = localStorage.getItem("authToken");
       const cleanSubjectId = decodeURIComponent(String(params.id)); 
       
-      // 1. INLINE FETCH OPTIONS (Bypasses TypeScript 'RequestCache' strictly)
       const response = await fetch(`/api-proxy/Subject/GetStudentGradesForTeacherById/${cleanSubjectId}`, {
         method: "GET",
         cache: "no-store", 
@@ -110,19 +131,13 @@ export default function AttendancePage() {
         }
       });
       
-      // 2. SAFE STREAM READING
       const text = await response.text();
       if (!response.ok) throw new Error(`Backend Error: ${text}`);
       
-      // 3. SAFE PARSING (In case the backend returns empty text instead of JSON)
       const data = text ? JSON.parse(text) : [];
-
-      // 4. ARRAY VERIFICATION (If the backend sends an object instead of an array, force it into one)
       const studentArray = Array.isArray(data) ? data : (data ? [data] : []);
       
-      // 5. BULLETPROOF MAPPING
       let mappedStudents = studentArray.map((s: any) => ({
-        // Fallback to studentGradeId if studentCode is null/missing so it never crashes
         id: String(s.studentCode || s.studentGradeId || Math.random()), 
         name: s.studentName || "Unknown Student",
         code: s.studentCode || "No Code", 
@@ -130,7 +145,6 @@ export default function AttendancePage() {
         present: false 
       }));
 
-      // 6. FILTER
       mappedStudents = mappedStudents.filter(s => String(s.group) === String(setup.group));
 
       if (mappedStudents.length === 0) {
@@ -141,18 +155,17 @@ export default function AttendancePage() {
       setIsStarted(true);
       
     } catch (error: any) {
-      // NOW IT WILL TELL YOU EXACTLY WHAT THE INVISIBLE ERROR WAS!
       console.error("🚨 CRITICAL SESSION SETUP ERROR:", error.message || error);
       alert(`Setup Failed: ${error.message || "Check the console for details."}`);
     } finally {
       setIsSetupLoading(false);
     }
   };
+
   // --- QR ROTATION LOGIC ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (showQrPanel && isQrActive) {
-      // Encode the targeted parameters so the student's scanner can extract them
       const generatePayload = () => JSON.stringify({ s: params.id, g: setup.group, w: setup.week, t: setup.type, n: Math.random().toString(36).substr(2, 5) });
       
       if (!qrToken) setQrToken(generatePayload());
@@ -190,7 +203,7 @@ export default function AttendancePage() {
     }
   };
 
-  // --- AI LOGIC (WITH FULL TARGETED PARAMS) ---
+  // --- AI LOGIC ---
   const processLiveFrame = async () => {
     if (!videoRef.current || activeModalRef.current !== "live" || isAiProcessingRef.current) return;
 
@@ -204,8 +217,6 @@ export default function AttendancePage() {
 
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
-    
-    // FULL TARGETING: Subject, Group, Week, and Type appended
     formData.append("subjectId", String(params.id));
     formData.append("group", setup.group);
     formData.append("week", setup.week);
@@ -220,7 +231,6 @@ export default function AttendancePage() {
 
       if (response.ok) {
         const data = await response.json();
-        // Uses the ID returned by Python to check off the student
         if (data.student_id) markStudentPresent(data.student_id);
       }
     } catch (err) {
@@ -240,7 +250,6 @@ export default function AttendancePage() {
       const formData = new FormData();
       
       formData.append("file", blob, "batch.jpg");
-      // FULL TARGETING: Subject, Group, Week, and Type appended
       formData.append("subjectId", String(params.id));
       formData.append("group", setup.group);
       formData.append("week", setup.week);
@@ -253,11 +262,19 @@ export default function AttendancePage() {
 
       if (response.ok) {
         const data = await response.json();
+        
         if (data.student_ids) {
           data.student_ids.forEach((id: string) => markStudentPresent(id));
+        }
+
+        const summary = data.message || `Successfully mapped ${data.student_ids?.length || 0} students.`;
+        setBatchSummary(summary);
+
+        setTimeout(() => {
           setActiveModal(null);
           setCapturedImage(null);
-        }
+          setBatchSummary(null);
+        }, 4000);
       }
     } catch (err) {
       alert("AI Server Offline.");
@@ -298,20 +315,17 @@ export default function AttendancePage() {
     startStream(activeEl, newMode, false);
   };
 
-const submitAttendance = async () => {
+  const submitAttendance = async () => {
     try {
       setIsSubmitting(true);
       
-      // 1. Fire the AI Sync, but DON'T await it so it doesn't block the save on Vercel!
       syncToDevice(studentsRef.current).catch(e => console.warn("AI Sync bypassed or blocked by Vercel HTTPS", e));
       
-      // 2. Decode the Subject ID to strip out Vercel's %20 spaces!
       const cleanSubjectId = decodeURIComponent(String(params.id));
 
-      // 3. Format the session record
       const sessionRecord = {
         id: Date.now().toString(), 
-        subjectId: cleanSubjectId, // Use the clean ID
+        subjectId: cleanSubjectId,
         week: setup.week, 
         group: setup.group, 
         type: setup.type,
@@ -326,13 +340,9 @@ const submitAttendance = async () => {
         }))
       };
 
-      console.log("Saving Session:", sessionRecord);
-
-      // 4. Save to LocalStorage
       const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
       localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
       
-      // 5. Redirect using the clean ID
       router.push(`/dashboard/teacher/subject/${cleanSubjectId}/attendance/manage`);
       
     } catch (error) {
@@ -342,6 +352,7 @@ const submitAttendance = async () => {
       setIsSubmitting(false);
     }
   };
+
   const filteredStudents = students.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (s.code && s.code.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -350,7 +361,6 @@ const submitAttendance = async () => {
   return (
     <div className="space-y-10 pb-40 text-gray-900 dark:text-white transition-colors duration-300">
       {!isStarted ? (
-        /* SETUP VIEW */
         <div className="bg-white dark:bg-gray-900 p-12 rounded-[4rem] shadow-2xl max-w-2xl mx-auto space-y-10 border border-gray-100 dark:border-gray-800">
            <h2 className="text-3xl font-black text-center uppercase italic text-blue-900 dark:text-blue-400">Session Setup</h2>
            <div className="grid grid-cols-1 gap-6">
@@ -360,7 +370,6 @@ const submitAttendance = async () => {
               </select>
               <select onChange={(e) => setSetup({...setup, group: e.target.value})} className="p-5 bg-gray-50 dark:bg-gray-800 rounded-2xl font-bold border-2 border-transparent focus:border-blue-900 outline-none w-full dark:text-white">
                  <option value="">Select Group</option>
-                 {/* Updated to standard numeric IDs to match standard backend API structure */}
                  <option value="1">Group 1</option>
                  <option value="2">Group 2</option>
               </select>
@@ -379,10 +388,8 @@ const submitAttendance = async () => {
            </button>
         </div>
       ) : (
-        /* MAIN INTERFACE */
         <div className="space-y-10 animate-in fade-in duration-500">
            
-           {/* ACTION BAR */}
            <div className="bg-white dark:bg-gray-900 p-8 rounded-[3.5rem] shadow-sm flex flex-col lg:flex-row justify-between items-center gap-6 border border-gray-100 dark:border-gray-800">
               <div className="flex items-center gap-4">
                  <div className="p-4 bg-blue-900 dark:bg-blue-800 text-white rounded-2xl shadow-lg"><FontAwesomeIcon icon={faUserCheck} /></div>
@@ -423,7 +430,6 @@ const submitAttendance = async () => {
               </div>
            </div>
 
-           {/* --- DYNAMIC QR PANEL --- */}
            {showQrPanel && (
              <div className="bg-white dark:bg-gray-900 p-8 rounded-[3.5rem] shadow-xl border-4 border-blue-900/10 dark:border-blue-500/20 flex flex-col md:flex-row items-center gap-10 animate-in slide-in-from-top-4 duration-300">
                 <div className="flex-1 space-y-6 text-center md:text-left rtl:md:text-right">
@@ -471,7 +477,6 @@ const submitAttendance = async () => {
              </div>
            )}
 
-           {/* STUDENT ROSTER GRID */}
            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {filteredStudents.map(s => (
                 <button 
@@ -492,7 +497,6 @@ const submitAttendance = async () => {
               ))}
            </div>
 
-           {/* FINAL SUBMIT BAR */}
            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 w-[90%] max-w-3xl z-50">
               <div className="bg-gray-900 dark:bg-black text-white p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl border border-white/10 backdrop-blur-md">
                  <div className="px-4">
@@ -507,7 +511,6 @@ const submitAttendance = async () => {
         </div>
       )}
 
-      {/* --- AI MODAL 1: LIVE SCANNER --- */}
       {activeModal === "live" && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/60">
           <div className="bg-white dark:bg-gray-900 w-full max-w-2xl rounded-[4rem] overflow-hidden shadow-2xl border-8 border-white dark:border-gray-800 transition-colors">
@@ -543,7 +546,6 @@ const submitAttendance = async () => {
         </div>
       )}
 
-      {/* --- AI MODAL 2: BATCH SNAP --- */}
       {activeModal === "capture" && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/60">
           <div className="bg-white dark:bg-gray-900 w-full max-w-xl rounded-[4rem] overflow-hidden shadow-2xl border-8 border-white dark:border-gray-800 text-center transition-colors">
@@ -588,12 +590,21 @@ const submitAttendance = async () => {
               <>
                 <img src={capturedImage} className="w-full aspect-square object-cover" alt="Captured class" />
                 <div className="p-8 grid grid-cols-2 gap-4">
-                  <button onClick={() => setCapturedImage(null)} className="py-4 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
-                    Discard
-                  </button>
-                  <button onClick={processCapturedPhoto} disabled={isAiProcessing} className="py-4 bg-blue-900 dark:bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
-                    {isAiProcessing ? "AI Syncing..." : "Send to AI"}
-                  </button>
+                  {batchSummary ? (
+                    <div className="col-span-2 py-6 bg-green-50 rounded-2xl border border-green-200 text-center animate-in zoom-in">
+                      <h3 className="text-xl font-black uppercase text-green-700 italic">Scan Complete</h3>
+                      <p className="text-sm font-bold text-green-600 mt-2">{batchSummary}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <button onClick={() => setCapturedImage(null)} className="py-4 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
+                        Discard
+                      </button>
+                      <button onClick={processCapturedPhoto} disabled={isAiProcessing} className="py-4 bg-blue-900 dark:bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase transition-colors">
+                        {isAiProcessing ? "AI Syncing..." : "Send to AI"}
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}

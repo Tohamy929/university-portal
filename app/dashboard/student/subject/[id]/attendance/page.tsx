@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import jsQR from "jsqr"; // Make sure to npm install jsqr
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faArrowLeft, faCheckCircle, faTimesCircle, faClock, 
@@ -26,9 +27,9 @@ export default function StudentAttendanceLog() {
   const [isLoading, setIsLoading] = useState(true);
   const [weeks, setWeeks] = useState<WeekData[]>([]);
 
-  // --- TWO-STEP SCANNER STATES ---
+  // --- SCANNER STATES ---
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [scannerState, setScannerState] = useState<"closed" | "qr" | "selfie" | "processing" | "success" | "error">("closed");
+  const [scannerState, setScannerState] = useState<"closed" | "qr" | "qr-success" | "selfie" | "processing" | "success" | "error">("closed");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   
   // NEW TARGETING STATES
@@ -46,7 +47,6 @@ export default function StudentAttendanceLog() {
   }, [id, router]);
 
   const fetchLog = (token: string, studentId: string) => {
-    // 1. Force Vercel to bypass its cache entirely
     const fetchOptions = {
       cache: "no-store" as RequestCache,
       headers: { 
@@ -63,7 +63,6 @@ export default function StudentAttendanceLog() {
       return await res.json();
     })
     .then(data => {
-      // 2. Map the data from the server directly
       const mappedGrid: WeekData[] = Array.from({ length: 14 }, (_, i) => {
         const weekNum = i + 1;
         const existingWeek = data.find((w: any) => w.weekNumber === weekNum);
@@ -79,16 +78,61 @@ export default function StudentAttendanceLog() {
     })
     .catch(err => {
       console.error("Attendance Fetch Failed:", err);
-      // Don't show "No Data", show a clear connection error so the user knows
       alert("Could not connect to the University Server. Please try again.");
     })
     .finally(() => setIsLoading(false));
   };
 
+  // --- AUTO QR SCANNER LOOP ---
+  const scanQrLoop = () => {
+    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+        
+        if (code) {
+          try {
+            const payload = JSON.parse(code.data);
+            setScannedGroup(payload.g);
+            setScannedWeek(payload.w);
+            setScannedType(payload.t);
+            
+            setScannerState("qr-success");
+            
+            setTimeout(() => {
+              setScannerState("selfie");
+              setFacingMode("user");
+              startStream("user");
+            }, 1500);
+            
+            return; 
+          } catch (e) {
+            console.warn("Found QR but it is not valid JSON.");
+          }
+        }
+      }
+    }
+    
+    if (scannerState === "qr") {
+      requestAnimationFrame(scanQrLoop);
+    }
+  };
+
   const launchScanner = () => {
     setScannerState("qr");
     setFacingMode("environment"); 
-    setTimeout(() => startStream("environment"), 100);
+    setTimeout(() => {
+      startStream("environment").then(() => {
+        requestAnimationFrame(scanQrLoop);
+      });
+    }, 100);
   };
 
   const startStream = async (mode: "user" | "environment") => {
@@ -112,18 +156,6 @@ export default function StudentAttendanceLog() {
     }
   };
 
-  const handleQrSuccess = () => {
-    // 1. Simulate reading the teacher's QR code and extracting ALL parameters
-    setScannedGroup("1"); // Group ID
-    setScannedWeek("1");  // Week Number
-    setScannedType("Lecture"); 
-    
-    // 2. Switch to Face ID mode
-    setScannerState("selfie");
-    setFacingMode("user");
-    startStream("user");
-  };
-
   const captureSelfieAndSend = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement("canvas");
@@ -145,13 +177,11 @@ export default function StudentAttendanceLog() {
       const formData = new FormData();
       formData.append("file", blob, "selfie.jpg");
       
-      // FULL TARGETING: We now append all data extracted from the QR code!
       formData.append("subjectId", String(id));
       formData.append("group", scannedGroup); 
       formData.append("week", scannedWeek);
       formData.append("type", scannedType);
 
-      // Send to local Python Server
       const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
         body: formData,
@@ -277,20 +307,30 @@ export default function StudentAttendanceLog() {
         </div>
       )}
 
-      {/* --- TWO-STEP SCANNER OVERLAY --- */}
+      {/* --- SCANNER OVERLAY --- */}
       {scannerState !== "closed" && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
           <div className="bg-white w-full max-w-md rounded-[3rem] p-8 text-center shadow-2xl relative overflow-hidden">
-             
+              
              {scannerState === "qr" && (
                <div className="animate-in slide-in-from-right">
                  <h3 className="text-2xl font-black uppercase text-gray-900 italic mb-2">Step 1: Scan Board</h3>
                  <p className="text-xs font-bold text-gray-500 mb-6">Point camera at the teacher's screen.</p>
                  <div className="relative aspect-square bg-black rounded-[2rem] overflow-hidden mb-6 border-4 border-blue-900/20">
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl"></div>
+                    <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl opacity-50 animate-pulse"></div>
                  </div>
-                 <button onClick={handleQrSuccess} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3">Simulate QR Read</button>
+                 <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200">Cancel</button>
+               </div>
+             )}
+
+             {scannerState === "qr-success" && (
+               <div className="py-20 flex flex-col items-center animate-in zoom-in">
+                 <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-5xl mb-6 shadow-inner">
+                   <FontAwesomeIcon icon={faQrcode} className="animate-bounce" />
+                 </div>
+                 <h3 className="text-2xl font-black uppercase text-blue-700 italic">Code Found!</h3>
+                 <p className="text-xs font-bold text-gray-500 mt-2">Switching to Face ID...</p>
                </div>
              )}
 
@@ -341,7 +381,7 @@ export default function StudentAttendanceLog() {
                </div>
              )}
 
-             {(scannerState === "qr" || scannerState === "selfie") && (
+             {(scannerState === "selfie") && (
                 <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200">Cancel</button>
              )}
           </div>
