@@ -215,13 +215,14 @@ export default function AttendancePage() {
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg'));
     if (!blob) return;
 
+   // Replace the old formData appends with this:
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
-    formData.append("subjectId", String(params.id));
-    formData.append("group", setup.group);
-    formData.append("week", setup.week);
-    formData.append("type", setup.type);
-
+    formData.append("data", JSON.stringify({
+      subjectId: parseInt(String(params.id)) || 0,
+      groupID: parseInt(setup.group) || 0,
+      type: setup.type === "Lecture" ? 1 : 2
+    }));
     try {
       setIsAiProcessing(true);
       const response = await fetch("http://127.0.0.1:8000/recognize/", {
@@ -249,11 +250,14 @@ export default function AttendancePage() {
       const blob = await res.blob();
       const formData = new FormData();
       
+  
+      
       formData.append("file", blob, "batch.jpg");
-      formData.append("subjectId", String(params.id));
-      formData.append("group", setup.group);
-      formData.append("week", setup.week);
-      formData.append("type", setup.type);
+      formData.append("data", JSON.stringify({
+        subjectId: parseInt(String(params.id)) || 0,
+        groupID: parseInt(setup.group) || 0,
+        type: setup.type === "Lecture" ? 1 : 2
+      }));
 
       const response = await fetch("http://127.0.0.1:8000/recognize_batch/", {
         method: "POST",
@@ -319,35 +323,48 @@ export default function AttendancePage() {
     try {
       setIsSubmitting(true);
       
-      syncToDevice(studentsRef.current).catch(e => console.warn("AI Sync bypassed or blocked by Vercel HTTPS", e));
+      // 1. Sync to local Python device (Optional Backup)
+      syncToDevice(studentsRef.current).catch(e => console.warn("AI Backup bypassed", e));
       
-      const cleanSubjectId = decodeURIComponent(String(params.id));
+      // 2. Filter ONLY the present students and map them to the C# schema
+      const presentStudents = studentsRef.current
+        .filter(s => s.present)
+        .map(s => ({
+          studentCode: parseInt(s.code || s.id) || 0
+        }));
 
-      const sessionRecord = {
-        id: Date.now().toString(), 
-        subjectId: cleanSubjectId,
-        week: setup.week, 
-        group: setup.group, 
-        type: setup.type,
-        date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        presentCount: studentsRef.current.filter(s => s.present).length,
-        total: studentsRef.current.length,
-        roster: studentsRef.current.map(s => ({ 
-          id: s.id, 
-          name: s.name, 
-          code: s.code, 
-          status: s.present ? 'present' : 'absent' 
-        }))
+      // 3. Format the exact payload from your Swagger documentation
+      const payload = {
+        students: presentStudents,
+        weekNumber: parseInt(setup.week) || 0, 
+        type: setup.type === "Lecture" ? 1 : 2,
+        groupId: parseInt(setup.group) || 0
       };
 
-      const existing = JSON.parse(localStorage.getItem("attendanceHistory") || "[]");
-      localStorage.setItem("attendanceHistory", JSON.stringify([sessionRecord, ...existing]));
-      
+      console.log("Sending Final Session to DB:", payload);
+
+      // 4. Send to the actual C# Database
+      const response = await fetch("/api-proxy/Attendance/Add", { 
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("authToken")}` 
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      // 5. Clean up Vercel URL spaces and Redirect on Success!
+      const cleanSubjectId = decodeURIComponent(String(params.id));
       router.push(`/dashboard/teacher/subject/${cleanSubjectId}/attendance/manage`);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Critical Error saving attendance:", error);
-      alert("Failed to save attendance. Check browser console.");
+      alert(`Failed to save session to database. ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }

@@ -176,48 +176,26 @@ export default function StudentAttendanceLog() {
 
       const formData = new FormData();
       formData.append("file", blob, "selfie.jpg");
-      formData.append("subjectId", String(id));
-      formData.append("group", scannedGroup); 
-      formData.append("week", scannedWeek);
-      formData.append("type", scannedType);
+      
+      // THE FIX: Bundle targeting data exactly how Python expects it!
+      const payloadData = {
+         subjectId: parseInt(String(id)) || 0,
+         groupID: parseInt(scannedGroup) || 0, // Python specifically looks for 'groupID'
+         type: scannedType === "Lecture" ? 1 : 2 // Python expects an integer for type
+      };
+      formData.append("data", JSON.stringify(payloadData));
 
-      // STEP 1: Ask Python to identify the face
-      const pythonResponse = await fetch("http://127.0.0.1:8000/recognize", {
+      const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
         body: formData,
       });
 
-      if (!pythonResponse.ok) throw new Error("Facial verification failed.");
-      
-      const pythonData = await pythonResponse.json();
-      
-      // We need the College Code returned by Python
-      const matchedStudentCode = pythonData.student_id; 
-      
-      if (!matchedStudentCode) throw new Error("AI did not return a valid Student ID.");
-
-      // STEP 2: Tell the ASP.NET Server so it can update the Teacher's UI!
-      const token = localStorage.getItem("authToken");
-      const cleanSubjectId = decodeURIComponent(String(id));
-
-      // Note: Your ASP.NET dev needs to create this endpoint if it doesn't exist yet!
-      await fetch("/api-proxy/Attendance/BroadcastPresence", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` 
-        },
-        body: JSON.stringify({
-           subjectId: cleanSubjectId,
-           group: scannedGroup,
-           studentId: matchedStudentCode,
-           status: "present"
-        })
-      });
+      if (!response.ok) throw new Error("Facial verification failed.");
 
       setScannerState("success");
       setTimeout(() => {
         setScannerState("closed");
+        const token = localStorage.getItem("authToken");
         const studentId = localStorage.getItem("studentDatabaseId");
         if (token && studentId) fetchLog(token, studentId);
       }, 3000);
