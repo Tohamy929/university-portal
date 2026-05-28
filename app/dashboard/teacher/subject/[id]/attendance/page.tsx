@@ -224,7 +224,7 @@ export default function AttendancePage() {
 
     try {
       setIsAiProcessing(true);
-      const response = await fetch("http://127.0.0.1:8000/recognize", {
+      const response = await fetch("http://127.0.0.1:8000/recognize/", {
         method: "POST",
         body: formData,
       });
@@ -255,7 +255,7 @@ export default function AttendancePage() {
       formData.append("week", setup.week);
       formData.append("type", setup.type);
 
-      const response = await fetch("http://127.0.0.1:8000/recognize_batch", {
+      const response = await fetch("http://127.0.0.1:8000/recognize_batch/", {
         method: "POST",
         body: formData,
       });

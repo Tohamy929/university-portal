@@ -182,7 +182,7 @@ export default function StudentAttendanceLog() {
       formData.append("week", scannedWeek);
       formData.append("type", scannedType);
 
-      const response = await fetch("http://127.0.0.1:8000/recognize", {
+      const response = await fetch("http://127.0.0.1:8000/recognize/", {
         method: "POST",
         body: formData,
       });
