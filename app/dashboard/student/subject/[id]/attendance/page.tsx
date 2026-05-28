@@ -176,23 +176,48 @@ export default function StudentAttendanceLog() {
 
       const formData = new FormData();
       formData.append("file", blob, "selfie.jpg");
-      
       formData.append("subjectId", String(id));
       formData.append("group", scannedGroup); 
       formData.append("week", scannedWeek);
       formData.append("type", scannedType);
 
-      const response = await fetch("http://127.0.0.1:8000/recognize/", {
+      // STEP 1: Ask Python to identify the face
+      const pythonResponse = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
         body: formData,
       });
 
-      if (!response.ok) throw new Error("Facial verification failed.");
+      if (!pythonResponse.ok) throw new Error("Facial verification failed.");
+      
+      const pythonData = await pythonResponse.json();
+      
+      // We need the College Code returned by Python
+      const matchedStudentCode = pythonData.student_id; 
+      
+      if (!matchedStudentCode) throw new Error("AI did not return a valid Student ID.");
+
+      // STEP 2: Tell the ASP.NET Server so it can update the Teacher's UI!
+      const token = localStorage.getItem("authToken");
+      const cleanSubjectId = decodeURIComponent(String(id));
+
+      // Note: Your ASP.NET dev needs to create this endpoint if it doesn't exist yet!
+      await fetch("/api-proxy/Attendance/BroadcastPresence", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}` 
+        },
+        body: JSON.stringify({
+           subjectId: cleanSubjectId,
+           group: scannedGroup,
+           studentId: matchedStudentCode,
+           status: "present"
+        })
+      });
 
       setScannerState("success");
       setTimeout(() => {
         setScannerState("closed");
-        const token = localStorage.getItem("authToken");
         const studentId = localStorage.getItem("studentDatabaseId");
         if (token && studentId) fetchLog(token, studentId);
       }, 3000);
@@ -203,7 +228,6 @@ export default function StudentAttendanceLog() {
       setTimeout(() => setScannerState("closed"), 3000);
     }
   };
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col gap-4 items-center justify-center text-blue-900 uppercase font-black tracking-widest animate-pulse">
