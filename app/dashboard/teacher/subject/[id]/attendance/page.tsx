@@ -236,7 +236,6 @@ export default function AttendancePage() {
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
     
-    // THE FIX: Swap subjectId for weekNumber to match Python expectations
     const payloadData = {
         weekNumber: parseInt(setup.week) || 0,
         groupID: parseInt(setup.group) || 0,
@@ -257,12 +256,18 @@ export default function AttendancePage() {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.student_id) markStudentPresent(data.student_id);
+        if (data.student_id) {
+          markStudentPresent(data.student_id);
+          // THE FIX: Flash the exact success message returned by Python!
+          setScanStatus(`✅ SUCCESS: ${data.message || "Student Verified"}`);
+        }
       }
     } catch (err) {
       setScanStatus("AI Connection Interrupted");
     } finally {
       setIsAiProcessing(false);
+      // Optional: If you want the message to stay visible a bit longer before scanning again, 
+      // you can increase this timeout from 3000 to 4000
       if (activeModalRef.current === "live") setTimeout(processLiveFrame, 3000);
     }
   };
@@ -349,16 +354,17 @@ export default function AttendancePage() {
     startStream(activeEl, newMode, false);
   };
 
-  const submitAttendance = async () => {
+ const submitAttendance = async () => {
     try {
       setIsSubmitting(true);
       
       syncToDevice(studentsRef.current).catch(e => console.warn("AI Backup bypassed", e));
       
+      // THE FIX: Change 'studentCode' to 'code' to match the backend's new schema exactly
       const presentStudents = studentsRef.current
         .filter(s => s.present)
         .map(s => ({
-          studentCode: parseInt(s.code || s.id) || 0
+          code: String(s.code || s.id) // The backend now expects this exact key
         }));
 
       const payload = {
