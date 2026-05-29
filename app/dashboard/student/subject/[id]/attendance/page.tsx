@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import jsQR from "jsqr"; // Make sure to npm install jsqr
+import jsQR from "jsqr"; 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { 
   faArrowLeft, faCheckCircle, faTimesCircle, faClock, 
@@ -32,7 +32,7 @@ export default function StudentAttendanceLog() {
   const [scannerState, setScannerState] = useState<"closed" | "qr" | "qr-success" | "selfie" | "processing" | "success" | "error">("closed");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   
-  // NEW TARGETING STATES
+  // TARGETING STATES
   const [scannedGroup, setScannedGroup] = useState<string>("");
   const [scannedWeek, setScannedWeek] = useState<string>("");
   const [scannedType, setScannedType] = useState<string>("");
@@ -42,7 +42,6 @@ export default function StudentAttendanceLog() {
     const studentId = localStorage.getItem("studentDatabaseId");
     
     if (!token || !studentId) { router.push("/login"); return; }
-
     fetchLog(token, studentId);
   }, [id, router]);
 
@@ -83,56 +82,58 @@ export default function StudentAttendanceLog() {
     .finally(() => setIsLoading(false));
   };
 
-  // --- AUTO QR SCANNER LOOP ---
-  const scanQrLoop = () => {
-    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-      const canvas = document.createElement("canvas");
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext("2d");
-      
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-        
-        if (code) {
-          try {
-            const payload = JSON.parse(code.data);
-            setScannedGroup(payload.g);
-            setScannedWeek(payload.w);
-            setScannedType(payload.t);
+  // --- BULLETPROOF QR SCANNER LOOP ---
+  // We use a useEffect interval instead of requestAnimationFrame to prevent silent canvas crashes
+  useEffect(() => {
+    let qrInterval: NodeJS.Timeout;
+
+    if (scannerState === "qr") {
+      qrInterval = setInterval(() => {
+        const video = videoRef.current;
+        // Wait until the camera is fully initialized and has actual dimensions
+        if (video && video.readyState === 4 && video.videoWidth > 0) {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
             
-            setScannerState("qr-success");
-            
-            setTimeout(() => {
-              setScannerState("selfie");
-              setFacingMode("user");
-              startStream("user");
-            }, 1500);
-            
-            return; 
-          } catch (e) {
-            console.warn("Found QR but it is not valid JSON.");
+            if (code) {
+              try {
+                const payload = JSON.parse(code.data);
+                clearInterval(qrInterval); // Stop scanning immediately
+                
+                setScannedGroup(payload.g);
+                setScannedWeek(payload.w);
+                setScannedType(payload.t);
+                
+                setScannerState("qr-success");
+                
+                setTimeout(() => {
+                  setScannerState("selfie");
+                  setFacingMode("user");
+                  startStream("user");
+                }, 1500);
+              } catch (e) {
+                console.warn("Found QR but it is not valid JSON.");
+              }
+            }
           }
         }
-      }
+      }, 300); // Check 3 times a second
     }
     
-    if (scannerState === "qr") {
-      requestAnimationFrame(scanQrLoop);
-    }
-  };
+    return () => clearInterval(qrInterval);
+  }, [scannerState]);
 
   const launchScanner = () => {
     setScannerState("qr");
     setFacingMode("environment"); 
-    setTimeout(() => {
-      startStream("environment").then(() => {
-        requestAnimationFrame(scanQrLoop);
-      });
-    }, 100);
+    setTimeout(() => startStream("environment"), 100);
   };
 
   const startStream = async (mode: "user" | "environment") => {
@@ -177,16 +178,21 @@ export default function StudentAttendanceLog() {
       const formData = new FormData();
       formData.append("file", blob, "selfie.jpg");
       
-      // THE FIX: Bundle targeting data exactly how Python expects it!
+      // THE FIX: Swap subjectId for weekNumber to match Python/C# expectations
       const payloadData = {
-         subjectId: parseInt(String(id)) || 0,
-         groupID: parseInt(scannedGroup) || 0, // Python specifically looks for 'groupID'
-         type: scannedType === "Lecture" ? 1 : 2 // Python expects an integer for type
+         weekNumber: parseInt(scannedWeek) || 0,
+         groupID: parseInt(scannedGroup) || 0, 
+         type: scannedType === "Lecture" ? 1 : 2
       };
       formData.append("data", JSON.stringify(payloadData));
 
+      // THE FIX: Added Teacher/Student token so Python can forward it securely
+      const token = localStorage.getItem("authToken");
       const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
+        headers: {
+           "Authorization": `Bearer ${token}` 
+        },
         body: formData,
       });
 
@@ -195,7 +201,6 @@ export default function StudentAttendanceLog() {
       setScannerState("success");
       setTimeout(() => {
         setScannerState("closed");
-        const token = localStorage.getItem("authToken");
         const studentId = localStorage.getItem("studentDatabaseId");
         if (token && studentId) fetchLog(token, studentId);
       }, 3000);
@@ -206,6 +211,7 @@ export default function StudentAttendanceLog() {
       setTimeout(() => setScannerState("closed"), 3000);
     }
   };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex flex-col gap-4 items-center justify-center text-blue-900 uppercase font-black tracking-widest animate-pulse">
@@ -318,11 +324,13 @@ export default function StudentAttendanceLog() {
                <div className="animate-in slide-in-from-right">
                  <h3 className="text-2xl font-black uppercase text-gray-900 italic mb-2">Step 1: Scan Board</h3>
                  <p className="text-xs font-bold text-gray-500 mb-6">Point camera at the teacher's screen.</p>
-                 <div className="relative aspect-square bg-black rounded-[2rem] overflow-hidden mb-6 border-4 border-blue-900/20">
-                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl opacity-50 animate-pulse"></div>
+                 <div className="relative aspect-square bg-black rounded-[2rem] overflow-hidden mb-6 border-4 border-blue-900/20 flex items-center justify-center">
+                    {/* The video stream takes a moment to load, providing visual feedback */}
+                    <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover z-10" />
+                    <FontAwesomeIcon icon={faSpinner} className="animate-spin text-4xl text-gray-600" />
+                    <div className="absolute inset-0 border-[6px] border-dashed border-white/50 m-8 rounded-3xl opacity-50 animate-pulse z-20 pointer-events-none"></div>
                  </div>
-                 <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200">Cancel</button>
+                 <button onClick={() => { stopStream(); setScannerState("closed"); }} className="w-full py-4 bg-gray-100 text-gray-900 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-gray-200 relative z-30">Cancel</button>
                </div>
              )}
 
@@ -345,11 +353,11 @@ export default function StudentAttendanceLog() {
                     <button onClick={() => {
                       const newMode = facingMode === "user" ? "environment" : "user";
                       setFacingMode(newMode); startStream(newMode);
-                    }} className="absolute top-4 left-4 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/80">
+                    }} className="absolute top-4 left-4 w-10 h-10 bg-black/50 text-white rounded-full flex items-center justify-center hover:bg-black/80 z-20">
                       <FontAwesomeIcon icon={faSyncAlt} />
                     </button>
                  </div>
-                 <button onClick={captureSelfieAndSend} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3 flex items-center justify-center gap-2">
+                 <button onClick={captureSelfieAndSend} className="w-full py-4 bg-blue-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-800 mb-3 flex items-center justify-center gap-2 relative z-30">
                    <FontAwesomeIcon icon={faCamera} /> Verify Identity
                  </button>
                </div>

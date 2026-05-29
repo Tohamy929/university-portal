@@ -65,29 +65,47 @@ export default function AttendancePage() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- WEBSOCKET FOR LIVE UPDATES ---
+  // --- THE FIX: POLLING FOR LIVE UPDATES INSTEAD OF WEBSOCKETS ---
   useEffect(() => {
-    if (!isStarted || !setup.group) return;
+    if (!isStarted || !setup.group || !setup.week || !setup.type) return;
 
-    // TODO FOR BACKEND: Update this URL to match your real WebSocket / SignalR Hub URL
-    const ws = new WebSocket(`wss://your-backend-url.com/ws/attendance?subjectId=${params.id}&group=${setup.group}`);
-
-    ws.onopen = () => console.log("🟢 WebSocket Connected for Real-Time Updates");
-    
-    ws.onmessage = (event) => {
+    // We poll the newly fixed backend API every 4 seconds to fetch any changes
+    // that the Python AI has saved into the Database natively.
+    const pollInterval = setInterval(async () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.studentId && data.status === "present") {
-          markStudentPresent(data.studentId);
+        const token = localStorage.getItem("authToken");
+        const typeInt = setup.type === "Lecture" ? 1 : 2;
+        
+        const res = await fetch(`/api-proxy/Attendance/GetByWeekAndGroupAndType/${setup.week}/${setup.group}/${typeInt}`, {
+           headers: { 
+             "Authorization": `Bearer ${token}`,
+             "Cache-Control": "no-cache"
+           }
+        });
+        
+        if (res.ok) {
+           const liveData = await res.json();
+           
+           // Safely merge the live database records into the current UI roster
+           setStudents(prev => prev.map(s => {
+              const dbRecord = liveData.find((d:any) => 
+                String(d.studentCode) === String(s.code) || 
+                String(d.id) === String(s.id) || 
+                String(d.studentId) === String(s.id)
+              );
+              
+              // If the DB says they are present (or if they are in the returned list), flip them green
+              const isPresent = dbRecord ? (dbRecord.isPresent !== undefined ? dbRecord.isPresent : true) : s.present;
+              return { ...s, present: isPresent };
+           }));
         }
       } catch (e) {
-        console.error("WebSocket message error:", e);
+         // Silently ignore polling errors so the UI doesn't stutter if there's a quick network hiccup
       }
-    };
+    }, 4000);
 
-    ws.onclose = () => console.log("🔴 WebSocket Disconnected");
-    return () => ws.close();
-  }, [isStarted, setup, params.id]);
+    return () => clearInterval(pollInterval);
+  }, [isStarted, setup]);
 
   const syncToDevice = async (updatedStudents: any[]) => {
     if (!aiServerOnline) return;
@@ -215,18 +233,25 @@ export default function AttendancePage() {
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg'));
     if (!blob) return;
 
-   // Replace the old formData appends with this:
     const formData = new FormData();
     formData.append("file", blob, "frame.jpg");
-    formData.append("data", JSON.stringify({
-      subjectId: parseInt(String(params.id)) || 0,
-      groupID: parseInt(setup.group) || 0,
-      type: setup.type === "Lecture" ? 1 : 2
-    }));
+    
+    // THE FIX: Swap subjectId for weekNumber to match Python expectations
+    const payloadData = {
+        weekNumber: parseInt(setup.week) || 0,
+        groupID: parseInt(setup.group) || 0,
+        type: setup.type === "Lecture" ? 1 : 2
+    };
+    formData.append("data", JSON.stringify(payloadData));
+
     try {
       setIsAiProcessing(true);
-      const response = await fetch("http://127.0.0.1:8000/recognize/", {
+      const token = localStorage.getItem("authToken");
+      const response = await fetch("http://127.0.0.1:8000/recognize", {
         method: "POST",
+        headers: {
+           "Authorization": `Bearer ${token}` 
+        },
         body: formData,
       });
 
@@ -250,17 +275,22 @@ export default function AttendancePage() {
       const blob = await res.blob();
       const formData = new FormData();
       
-  
-      
       formData.append("file", blob, "batch.jpg");
-      formData.append("data", JSON.stringify({
-        subjectId: parseInt(String(params.id)) || 0,
-        groupID: parseInt(setup.group) || 0,
-        type: setup.type === "Lecture" ? 1 : 2
-      }));
+      
+      // THE FIX: Swap subjectId for weekNumber
+      const payloadData = {
+          weekNumber: parseInt(setup.week) || 0,
+          groupID: parseInt(setup.group) || 0,
+          type: setup.type === "Lecture" ? 1 : 2
+      };
+      formData.append("data", JSON.stringify(payloadData));
 
-      const response = await fetch("http://127.0.0.1:8000/recognize_batch/", {
+      const token = localStorage.getItem("authToken");
+      const response = await fetch("http://127.0.0.1:8000/recognize_batch", {
         method: "POST",
+        headers: {
+           "Authorization": `Bearer ${token}` 
+        },
         body: formData,
       });
 
@@ -323,17 +353,14 @@ export default function AttendancePage() {
     try {
       setIsSubmitting(true);
       
-      // 1. Sync to local Python device (Optional Backup)
       syncToDevice(studentsRef.current).catch(e => console.warn("AI Backup bypassed", e));
       
-      // 2. Filter ONLY the present students and map them to the C# schema
       const presentStudents = studentsRef.current
         .filter(s => s.present)
         .map(s => ({
           studentCode: parseInt(s.code || s.id) || 0
         }));
 
-      // 3. Format the exact payload from your Swagger documentation
       const payload = {
         students: presentStudents,
         weekNumber: parseInt(setup.week) || 0, 
@@ -341,9 +368,6 @@ export default function AttendancePage() {
         groupId: parseInt(setup.group) || 0
       };
 
-      console.log("Sending Final Session to DB:", payload);
-
-      // 4. Send to the actual C# Database
       const response = await fetch("/api-proxy/Attendance/Add", { 
         method: "POST",
         headers: { 
@@ -358,7 +382,6 @@ export default function AttendancePage() {
         throw new Error(errorText);
       }
 
-      // 5. Clean up Vercel URL spaces and Redirect on Success!
       const cleanSubjectId = decodeURIComponent(String(params.id));
       router.push(`/dashboard/teacher/subject/${cleanSubjectId}/attendance/manage`);
       
